@@ -1,4 +1,5 @@
 import type { FileSystemAdapter } from '@/lib/fs'
+import { createScopedAdapter } from '@/lib/fs'
 import {
   type VaultConfig,
   DEFAULT_VAULT_CONFIG,
@@ -9,6 +10,7 @@ import {
   SNAPSHOTS_DIR,
   CONFIG_FILE,
 } from '@/types/vault'
+import { uniqueVaultSlug, vaultFolderPath, vaultsRootPath } from '@/lib/vault/paths'
 
 export async function createVault(fs: FileSystemAdapter, name: string): Promise<VaultConfig> {
   const config: VaultConfig = { ...DEFAULT_VAULT_CONFIG, name }
@@ -57,4 +59,20 @@ export async function saveVaultConfig(
 
 export async function isVault(fs: FileSystemAdapter): Promise<boolean> {
   return fs.exists(MARROW_DIR)
+}
+
+/**
+ * Create a new vault folder under OPFS `vaults/<slug>/` and initialize structure.
+ */
+export async function bootstrapNewVault(
+  rootFs: FileSystemAdapter,
+  displayName: string,
+): Promise<{ vaultPath: string; config: VaultConfig }> {
+  await rootFs.mkdir(vaultsRootPath())
+  const slug = uniqueVaultSlug(displayName)
+  const folder = vaultFolderPath(slug)
+  await rootFs.mkdir(folder)
+  const scoped = createScopedAdapter(rootFs, folder)
+  const config = await createVault(scoped, displayName)
+  return { vaultPath: folder, config }
 }

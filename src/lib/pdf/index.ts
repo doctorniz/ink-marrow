@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import { degrees, PDFDocument, rgb } from 'pdf-lib'
 import type { PdfNewPageOptions } from '@/types/pdf'
 
 const PAGE_SIZES = {
@@ -131,10 +131,11 @@ export async function deletePage(
 export async function rotatePage(
   pdfBytes: Uint8Array,
   pageIndex: number,
-  degrees: 0 | 90 | 180 | 270,
+  deg: 0 | 90 | 180 | 270,
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(pdfBytes)
   const page = doc.getPage(pageIndex)
-  page.setRotation({ type: 0, angle: (page.getRotation().angle + degrees) % 360 })
+  const nextAngle = (page.getRotation().angle + deg) % 360
+  page.setRotation(degrees(nextAngle))
   return doc.save()
 }

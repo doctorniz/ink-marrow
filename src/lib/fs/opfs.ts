@@ -57,7 +57,9 @@ export class OpfsAdapter implements FileSystemAdapter {
     const { parent, name } = await this.resolvePath(path)
     const fileHandle = await parent.getFileHandle(name, { create: true })
     const writable = await fileHandle.createWritable()
-    await writable.write(data)
+    const copy = new Uint8Array(data.byteLength)
+    copy.set(data)
+    await writable.write(copy)
     await writable.close()
   }
 
@@ -104,7 +106,10 @@ export class OpfsAdapter implements FileSystemAdapter {
     const dir = path ? await this.resolveDir(path) : this.getRoot()
     const entries: FileEntry[] = []
 
-    for await (const [name, handle] of dir.entries()) {
+    const withEntries = dir as FileSystemDirectoryHandle & {
+      entries(): AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]>
+    }
+    for await (const [name, handle] of withEntries.entries()) {
       const entryPath = path ? `${path}/${name}` : name
       const isDirectory = handle.kind === 'directory'
 

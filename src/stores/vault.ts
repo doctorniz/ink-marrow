@@ -3,6 +3,8 @@ import { immer } from 'zustand/middleware/immer'
 import type { VaultConfig, VaultMetadata } from '@/types/vault'
 
 interface VaultState {
+  /** OPFS path from root, e.g. `vaults/my-vault-abc123` */
+  activeVaultPath: string | null
   isOpen: boolean
   config: VaultConfig | null
   metadata: VaultMetadata | null
@@ -10,6 +12,7 @@ interface VaultState {
   isLoading: boolean
   error: string | null
 
+  setActiveVaultPath: (path: string | null) => void
   setConfig: (config: VaultConfig) => void
   setMetadata: (metadata: VaultMetadata) => void
   setOpen: (isOpen: boolean) => void
@@ -21,12 +24,18 @@ interface VaultState {
 
 export const useVaultStore = create<VaultState>()(
   immer((set) => ({
+    activeVaultPath: null,
     isOpen: false,
     config: null,
     metadata: null,
     recentVaults: [],
     isLoading: false,
     error: null,
+
+    setActiveVaultPath: (path) =>
+      set((state) => {
+        state.activeVaultPath = path
+      }),
 
     setConfig: (config) =>
       set((state) => {
@@ -63,6 +72,7 @@ export const useVaultStore = create<VaultState>()(
 
     reset: () =>
       set((state) => {
+        state.activeVaultPath = null
         state.isOpen = false
         state.config = null
         state.metadata = null

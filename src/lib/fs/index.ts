@@ -4,6 +4,7 @@ import { OpfsAdapter } from './opfs'
 export type { FileSystemAdapter } from './types'
 export { ok, err } from './types'
 export type { Result } from './types'
+export { createScopedAdapter } from './scoped'
 
 let adapter: FileSystemAdapter | null = null
 
