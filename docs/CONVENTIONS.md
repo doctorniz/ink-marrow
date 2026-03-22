@@ -229,3 +229,8 @@ docs(readme): add development setup instructions
 - PR description includes summary + test plan
 - Screenshots for UI changes
 - All CI checks must pass
+
+## Cursor & AI assistant
+
+- Project rules live in **`.cursor/rules/`** (`.mdc` files). See **`docs/CURSOR.md`** for the current list and purpose.
+- When using Cursor Agent on this repo, the default expectation is: greet with **Assalamualaikum** on substantive help, and **update `docs/`** (and `README.md` when needed) at the end of runs that change behavior, architecture, or dependencies—then summarize which doc files changed in the final reply.

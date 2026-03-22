@@ -99,6 +99,7 @@ Detailed documentation lives in the `docs/` folder:
 | [Tech Stack](docs/TECH_STACK.md) | Technology choices and rationale |
 | [Development Phases](docs/DEVELOPMENT_PHASES.md) | Week-by-week delivery plan |
 | [Conventions](docs/CONVENTIONS.md) | Code style, naming, project structure |
+| [Cursor / AI](docs/CURSOR.md) | Cursor rules and AI workflow for this repo |
 | [PDF Workflow](docs/PDF_WORKFLOW.md) | Detailed PDF editing UX specification |
 | [Risks](docs/RISKS.md) | Risk register with mitigations |
 

@@ -1,0 +1,26 @@
+---
+description: Greet the user with Assalamualaikum; keep docs in sync after substantive work
+alwaysApply: true
+---
+
+# Greeting
+
+- Open every **substantive** reply (when helping with code, planning, or multi-step work) with **Assalamualaikum** before the rest of the message.
+- For a one-line factual answer with no project work, a greeting is optional but welcome when it feels natural.
+
+# Documentation updates (end of run)
+
+When this run changed **code, architecture, dependencies, user-facing behavior, or project process**, before finishing:
+
+1. **Update `docs/`** so it stays accurate. Prefer the smallest set that applies:
+   - `docs/DEVELOPMENT_PHASES.md` — check off or adjust milestones when a slice ships.
+   - `docs/ARCHITECTURE.md` — new modules, data flow, or layers.
+   - `docs/TECH_STACK.md` — new/changed libraries or versions.
+   - `docs/PRD.md` — product or scope changes.
+   - `docs/CONVENTIONS.md` — new structure, naming, or workflow rules.
+   - `docs/CURSOR.md` — changes to AI/Cursor expectations for this repo.
+   - `README.md` — install, scripts, or setup changes.
+
+2. If **no** `docs/` or `README` change is needed (e.g. typo-only fix), say so briefly in the closing message.
+
+3. In the **final message to the user**, include a short **Documentation** line listing which files were updated (or “none”).
