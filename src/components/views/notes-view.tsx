@@ -16,7 +16,6 @@ import { PdfViewer } from '@/components/pdf/pdf-viewer'
 import { CanvasEditor } from '@/components/canvas/canvas-editor'
 import { KanbanEditor } from '@/components/kanban/kanban-editor'
 import { useEditorStore } from '@/stores/editor'
-import { useCanvasStore } from '@/stores/canvas'
 import { useFileTreeStore } from '@/stores/file-tree'
 import { useUiStore } from '@/stores/ui'
 import { ViewMode } from '@/types/vault'
@@ -39,8 +38,6 @@ function stemFromVaultPath(path: string): string {
 function starredStorageKey(vaultPath: string) {
   return `ink-marrow:starred:${vaultPath}`
 }
-
-const CANVAS_MOUNT_FALLBACK_MS = 900
 
 function imageExtFromPath(path: string): string {
   const n = path.split('/').pop() ?? path
@@ -70,65 +67,6 @@ function ImagePreviewTabPane({
       </div>
       <div className="bg-bg flex min-h-0 flex-1 flex-col overflow-hidden p-3">
         <ImageEditorView vaultFs={vaultFs} path={path} title={titleFromVaultPath(path)} />
-      </div>
-    </div>
-  )
-}
-
-/**
- * New canvas tabs: Fabric must not mount until the inline title has claimed focus,
- * otherwise the canvas steals focus on first paint (LAUNCH C1).
- */
-function CanvasTabPane({
-  tabId,
-  path,
-  isNew,
-  clearNew,
-  onRename,
-  onOpenNotePath,
-}: {
-  tabId: string
-  path: string
-  isNew: boolean
-  clearNew: (id: string) => void
-  onRename: (oldPath: string, stem: string) => void
-  onOpenNotePath: (notePath: string) => void
-}) {
-  const [forceMount, setForceMount] = useState(false)
-
-  useEffect(() => {
-    if (!isNew) {
-      setForceMount(false)
-      return
-    }
-    setForceMount(false)
-    const t = window.setTimeout(() => setForceMount(true), CANVAS_MOUNT_FALLBACK_MS)
-    return () => window.clearTimeout(t)
-  }, [tabId, isNew])
-
-  const mountEditor = !isNew || forceMount
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-border bg-bg-secondary flex shrink-0 items-center gap-2 border-b px-3 py-1.5">
-        <InlineFileTitle
-          path={path}
-          autoFocus={isNew}
-          onFocused={() => clearNew(tabId)}
-          onRename={onRename}
-        />
-      </div>
-      <div className="relative min-h-0 flex-1">
-        {mountEditor ? (
-          <CanvasEditor path={path} onOpenNotePath={onOpenNotePath} />
-        ) : (
-          <div
-            className="text-fg-muted flex h-full min-h-[120px] items-center justify-center px-4 text-center text-xs"
-            aria-hidden
-          >
-            Preparing canvas…
-          </div>
-        )}
       </div>
     </div>
   )
@@ -202,10 +140,6 @@ function NotesViewInner() {
       return
     }
     try {
-      if (ext === '.canvas') {
-        const flush = useCanvasStore.getState()._flushSave
-        if (flush) await flush()
-      }
       await vaultFs.rename(oldPath, newPath)
       removeSearchDocument(oldPath)
       if (newPath.endsWith('.md')) await reindexMarkdownPath(vaultFs, newPath)
@@ -394,21 +328,15 @@ function NotesViewInner() {
             <PdfViewer path={activeTab.path} />
           </div>
         ) : activeTab?.type === 'canvas' ? (
-          <CanvasTabPane
-            key={activeTab.id}
-            tabId={activeTab.id}
-            path={activeTab.path}
-            isNew={Boolean(activeTab.isNew)}
-            clearNew={clearNew}
-            onRename={(oldPath, stem) =>
-              void handleRenameVaultFile(activeTab.id, oldPath, stem, '.canvas')
-            }
-            onOpenNotePath={(notePath) => {
-              useUiStore.getState().setActiveView(ViewMode.Vault)
-              useUiStore.getState().setVaultMode('tree')
-              openNotePath(notePath)
-            }}
-          />
+          <div key={activeTab.id} className="min-h-0 flex-1">
+            <CanvasEditor
+              tabId={activeTab.id}
+              path={activeTab.path}
+              isNew={activeTab.isNew}
+              onRenamed={vaultChanged}
+              onPersisted={bumpScan}
+            />
+          </div>
         ) : activeTab?.type === 'image' ? (
           <ImagePreviewTabPane
             key={activeTab.id}

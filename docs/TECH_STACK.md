@@ -33,7 +33,8 @@
 |---|---|
 | **pdfjs-dist** (PDF.js) | PDF rendering, text layer, search, outline extraction |
 | **pdf-lib** | Client-side PDF manipulation — annotation writing, page management, merge, page extract/reorder, form filling, signature stamping |
-| **Fabric.js** | Canvas overlay for annotation editing on PDF pages; also powers the unlimited canvas |
+| **Fabric.js** | Canvas overlay for annotation editing on PDF pages |
+| **PixiJS** v8 | WebGL-accelerated layer-based drawing canvas (`.canvas` editor) with brush engine and Photoshop-style properties panel |
 
 ### Search
 
@@ -114,13 +115,20 @@
 - Easier to extend than raw ProseMirror while retaining full ProseMirror power
 - Better WYSIWYG experience than Milkdown for our "renders in-place" requirement
 
-### Why Fabric.js over Konva or raw Canvas?
+### Why Fabric.js for PDF annotations?
 
-- Richer object manipulation API (select, resize, rotate, group)
-- Built-in serialization to/from JSON (critical for `.canvas` file format)
-- Powers both PDF annotation overlay AND unlimited canvas with a single engine
+- Richer object manipulation API (select, resize, rotate, group) for annotation overlays
+- Built-in serialization to/from JSON
 - Better text editing support on canvas
 - Active community and documentation
+
+### Why PixiJS for the Canvas Editor?
+
+- WebGL-accelerated rendering for smooth drawing at any zoom level
+- `RenderTexture` enables raster-first, layer-based workflows (Photoshop/Magma style)
+- Native blend modes (multiply, screen, overlay, etc.) via GPU
+- Pointer Events integration for pressure-sensitive stylus/pen input
+- Performant even with large canvases (4096×4096 per layer)
 
 ### Why MiniSearch over Lunr or FlexSearch?
 

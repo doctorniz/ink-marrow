@@ -1,90 +1,166 @@
+/* ------------------------------------------------------------------ */
+/*  Canvas file format v4 — PixiJS raster layer engine                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Canvas file format version.
+ *
+ *   v2 — legacy. Migrated via `migrateV2ToV3` on read; never written.
+ *   v3 — single JSON file. Each layer inlines its pixel data as a base64
+ *        PNG data URL in `CanvasLayerData.imageData`. Dense 5-layer
+ *        documents could balloon to 10–25 MB of inline JSON — slow to
+ *        parse, slow to sync, visible pain in Dropbox. Read-only now.
+ *   v4 — sidecar-PNG format. JSON holds metadata only; layer pixels live
+ *        in binary PNG files at `<canvasPath>.assets/<layerId>.png`.
+ *        `CanvasLayerData.imageData` is always `null` for v4 files. The
+ *        JSON stays small and human-readable; per-layer sync deltas are
+ *        possible because each PNG is its own sync unit.
+ *
+ * v3 files remain readable (inline imageData path is still honoured by
+ * the deserialiser). They get rewritten as v4 on the next save. Users
+ * whose vaults are mid-migration may see a mix of v3 and v4 files for
+ * a while; that is fine.
+ */
+export const CANVAS_VERSION = 4
+
+/** Persisted viewport state (pan + zoom). */
+export interface ViewportState {
+  x: number
+  y: number
+  zoom: number // 0.1 – 10
+}
+
+/** Per-layer data stored in the canvas JSON file. */
+export interface CanvasLayerData {
+  id: string
+  name: string
+  visible: boolean
+  opacity: number // 0–1
+  locked: boolean
+  blendMode: string // PixiJS blend mode name
+  /**
+   * v3-only: base64 PNG data URL of the rendered layer pixels, or null
+   * if empty. v4 files write `null` here — pixel data lives in a sidecar
+   * PNG at `<canvasPath>.assets/<id>.png` instead. The field is retained
+   * to keep v3 files readable without a separate schema.
+   */
+  imageData: string | null
+}
+
+/** Layer metadata exposed to the Zustand store / React UI. */
+export interface CanvasLayerMeta {
+  id: string
+  name: string
+  visible: boolean
+  opacity: number
+  locked: boolean
+  blendMode: string
+}
+
+/** The on-disk .canvas JSON file. */
 export interface CanvasFile {
   version: number
-  nodes: CanvasNode[]
-  edges: CanvasEdge[]
-  frames: CanvasFrame[]
-}
-
-export type CanvasNode = CanvasTextNode | CanvasImageNode | CanvasStickyNode | CanvasDrawingNode | CanvasWikiLinkNode
-
-/** Fabric `stylesToArray` format — persisted with text / sticky body for mixed formatting. */
-export type CanvasInlineStyleRange = { start: number; end: number; style: Record<string, unknown> }
-
-interface CanvasNodeBase {
-  id: string
-  x: number
-  y: number
   width: number
   height: number
-  color?: string
+  background: string // hex color
+  viewport: ViewportState
+  layers: CanvasLayerData[]
+  activeLayerId: string
 }
 
-export interface CanvasTextNode extends CanvasNodeBase {
-  type: 'text'
-  text: string
-  /** Text fill (maps to Fabric `fill`) */
-  color?: string
-  fontSize?: number
-  fontFamily?: string
-  fontWeight?: string | number
-  fontStyle?: string
-  underline?: boolean
-  /** Per-range inline styles (Fabric); omitted when uniform default-only. */
-  styles?: CanvasInlineStyleRange[]
+/* ------------------------------------------------------------------ */
+/*  Tool & brush types                                                 */
+/* ------------------------------------------------------------------ */
+
+export type CanvasTool = 'brush' | 'eraser' | 'pan' | 'eyedropper' | 'fill'
+
+export interface BrushSettings {
+  size: number // 1–200
+  opacity: number // 0–1
+  hardness: number // 0–1
+  spacing: number // 0.05–1.0 (fraction of brush diameter)
+  color: string // hex
 }
 
-export interface CanvasImageNode extends CanvasNodeBase {
-  type: 'image'
-  src: string
-}
-
-export interface CanvasStickyNode extends CanvasNodeBase {
-  type: 'sticky'
-  text: string
-  color: string
-  /** Inline styles for sticky body text (same shape as `CanvasTextNode.styles`). */
-  textStyles?: CanvasInlineStyleRange[]
-}
-
-export interface CanvasDrawingNode extends CanvasNodeBase {
-  type: 'drawing'
-  paths: CanvasPath[]
-}
-
-export interface CanvasPath {
-  points: { x: number; y: number; pressure?: number }[]
-  strokeColor: string
-  strokeWidth: number
-}
-
-export interface CanvasWikiLinkNode extends CanvasNodeBase {
-  type: 'wiki-link'
-  target: string
-  alias?: string
-}
-
-export interface CanvasEdge {
-  id: string
-  fromNode: string
-  toNode: string
-  fromSide?: 'top' | 'right' | 'bottom' | 'left'
-  toSide?: 'top' | 'right' | 'bottom' | 'left'
-  color?: string
-  label?: string
-}
-
-export interface CanvasFrame {
-  id: string
-  label: string
+/** A single point in a stroke, captured from PointerEvent. */
+export interface StrokePoint {
   x: number
   y: number
-  width: number
-  height: number
-  color?: string
+  pressure: number // 0–1
+  tiltX: number
+  tiltY: number
+  timestamp: number
 }
 
-export interface CanvasViewport {
-  x: number
-  y: number
-  zoom: number
+/* ------------------------------------------------------------------ */
+/*  Undo                                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Per-layer pixel snapshot used by the stroke undo path.
+ *
+ * Stored as a PNG `Blob` rather than a base64 string:
+ *
+ *   - Blobs live in the browser's off-heap blob storage, not the JS heap,
+ *     and are disk-backable under memory pressure. A 30-entry stack of
+ *     dense strokes that would previously balloon the JS heap by >100 MB
+ *     now pressures the JS heap only by the blob *handles* (a few bytes
+ *     each) while the PNG bytes sit in blob storage.
+ *   - PNG bytes are ~25% smaller than their base64 encoding (4 bytes per
+ *     3 bytes of payload).
+ *   - Restoration via `createImageBitmap(blob)` is faster than the
+ *     `HTMLImageElement + data URL` path and decodes off the main thread
+ *     on browsers that support it.
+ *
+ * Disk format (`CanvasLayerData.imageData`) stays base64 — see BUG-13 for
+ * the plan to replace that with sibling PNG files.
+ */
+export interface LayerSnapshot {
+  layerId: string
+  blob: Blob
+}
+
+/**
+ * Undo entries are a discriminated union keyed by `kind`:
+ *
+ *   - `stroke`          → snapshot-replace a set of layers' pixels.
+ *   - `remove-layer`    → re-create a layer that was deleted, at its
+ *                         original stack position, with its full metadata
+ *                         and last-known pixel data.
+ *   - `reorder-layers`  → replace the layer stack order. Stores just the
+ *                         before/after id arrays — pixel data is untouched,
+ *                         so these entries are tiny (~N strings each).
+ *
+ * New kinds (add-layer, etc.) should follow the same pattern rather than
+ * overloading `stroke`, so each undo path stays narrow and type-checked.
+ */
+export type UndoEntry =
+  | StrokeUndoEntry
+  | RemoveLayerUndoEntry
+  | ReorderLayersUndoEntry
+
+export interface StrokeUndoEntry {
+  kind: 'stroke'
+  description: string
+  snapshots: LayerSnapshot[]
+}
+
+export interface RemoveLayerUndoEntry {
+  kind: 'remove-layer'
+  description: string
+  /** Full layer record captured at delete time — enough to recreate it. */
+  layerData: CanvasLayerData
+  /** 0-based index in the layer stack where this layer lived. */
+  index: number
+  /** Whether this layer was active when it was removed. */
+  wasActive: boolean
+}
+
+export interface ReorderLayersUndoEntry {
+  kind: 'reorder-layers'
+  description: string
+  /** Stack order (bottom → top) before the reorder. */
+  before: string[]
+  /** Stack order (bottom → top) after the reorder. */
+  after: string[]
 }

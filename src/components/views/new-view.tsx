@@ -16,8 +16,6 @@ import { useEditorStore } from '@/stores/editor'
 import { DEFAULT_VAULT_CONFIG, ViewMode } from '@/types/vault'
 import type { PdfNewPageOptions } from '@/types/pdf'
 import { insertBlankPage } from '@/lib/pdf/page-operations'
-import { useFileTreeStore } from '@/stores/file-tree'
-import { createEmptyCanvas, serializeCanvas } from '@/lib/canvas'
 import {
   listTemplates,
   readTemplate,
@@ -28,6 +26,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/utils/cn'
 import { PDFDocument } from 'pdf-lib'
+import { createEmptyCanvasJson } from '@/lib/canvas/serializer'
 
 /* ------------------------------------------------------------------ */
 /*  Folder picker helper                                               */
@@ -278,38 +277,35 @@ function NewPdfNote() {
 function NewCanvas() {
   const { vaultFs } = useVaultSession()
   const setActiveView = useUiStore((s) => s.setActiveView)
+  const openTab = useEditorStore((s) => s.openTab)
 
   const folders = useFolderList()
   const [name, setName] = useState('')
   const [folder, setFolder] = useState('/')
 
   const create = useCallback(async () => {
-    const stem = name.trim() || `Canvas ${new Date().toISOString().slice(0, 10)}`
+    const stem = name.trim() || `Drawing ${new Date().toISOString().slice(0, 10)}`
     const filename = stem.endsWith('.canvas') ? stem : `${stem}.canvas`
     const dir = folder === '/' ? '' : folder
-    const path = `${dir}/${filename}`.replace(/^\/+/, '')
+    const filePath = `${dir}/${filename}`.replace(/^\/+/, '')
 
-    const json = serializeCanvas(createEmptyCanvas())
-    await vaultFs.writeTextFile(path, json)
+    await vaultFs.writeTextFile(filePath, createEmptyCanvasJson())
 
-    setActiveView(ViewMode.Vault)
-    useUiStore.getState().setVaultMode('tree')
-    useEditorStore.getState().openTab({
+    openTab({
       id: crypto.randomUUID(),
-      path,
+      path: filePath,
       type: 'canvas',
-      title: stem,
+      title: stem.replace(/\.canvas$/, ''),
       isDirty: false,
-      isNew: true,
     })
-    window.dispatchEvent(new CustomEvent('ink:vault-changed'))
-  }, [name, folder, vaultFs, setActiveView])
+    setActiveView(ViewMode.Vault)
+  }, [name, folder, vaultFs, openTab, setActiveView])
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <label className="text-fg-secondary flex flex-col gap-1 text-xs">
-          Canvas name
+          Drawing name
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -333,7 +329,7 @@ function NewCanvas() {
         </label>
       </div>
       <Button size="sm" onClick={() => void create()}>
-        <Plus className="size-3.5" /> Create canvas
+        <Plus className="size-3.5" /> Create drawing
       </Button>
     </div>
   )
@@ -427,7 +423,7 @@ type Tab = 'markdown' | 'pdf' | 'canvas' | 'templates'
 const TABS: { id: Tab; label: string; icon: typeof FileText }[] = [
   { id: 'markdown', label: 'Markdown Note', icon: FileText },
   { id: 'pdf', label: 'PDF Note', icon: FileUp },
-  { id: 'canvas', label: 'Canvas', icon: Layout },
+  { id: 'canvas', label: 'Drawing', icon: Layout },
   { id: 'templates', label: 'Templates', icon: Settings },
 ]
 
@@ -451,7 +447,7 @@ export function NewView() {
     <div className="flex h-full flex-col p-6 sm:p-8">
       <h2 className="text-fg text-2xl font-semibold tracking-tight">Create</h2>
       <p className="text-fg-secondary mt-1 text-sm">
-        Start a new markdown note, PDF note, or unlimited canvas.
+        Start a new markdown note, PDF note, or drawing.
       </p>
 
       <div className="border-border mt-6 flex gap-1 border-b">

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm test *)",
+      "Bash(find C:\\\\\\\\Users\\\\\\\\nizar\\\\\\\\Code\\\\\\\\ink-marrow\\\\\\\\node_modules\\\\\\\\pixi.js -type f -name \"*.d.ts\")",
+      "Bash(xargs grep *)",
+      "Bash(grep -n \"useAutoSave\" src/components/pdf/*.tsx)",
+      "Bash(mkdir -p C:/Users/nizar/Code/ink-marrow/src/lib/canvas)",
+      "Bash(mkdir -p C:/Users/nizar/Code/ink-marrow/src/components/canvas)"
+    ]
+  }
+}

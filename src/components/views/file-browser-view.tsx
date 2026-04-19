@@ -122,10 +122,10 @@ export function FileBrowserView({ showHidden = false }: { showHidden?: boolean }
   const [movePaths, setMovePaths] = useState<string[] | null>(null)
   const [deletePaths, setDeletePaths] = useState<string[] | null>(null)
   const [newFilePath, setNewFilePath] = useState<string | null>(null)
-  const pendingCanvasPath = useFileBrowserStore((s) => s.pendingCanvasPath)
-  const setPendingCanvasPath = useFileBrowserStore((s) => s.setPendingCanvasPath)
   const pendingPdfPath = useFileBrowserStore((s) => s.pendingPdfPath)
   const setPendingPdfPath = useFileBrowserStore((s) => s.setPendingPdfPath)
+  const pendingCanvasPath = useFileBrowserStore((s) => s.pendingCanvasPath)
+  const setPendingCanvasPath = useFileBrowserStore((s) => s.setPendingCanvasPath)
 
   const listScrollRef = useRef<HTMLDivElement>(null)
   const [externalDragOver, setExternalDragOver] = useState(false)
@@ -172,20 +172,20 @@ export function FileBrowserView({ showHidden = false }: { showHidden?: boolean }
   }, [editingPath])
 
   useEffect(() => {
-    if (pendingCanvasPath) {
-      setOpenCanvasPath(pendingCanvasPath)
-      setNewFilePath(pendingCanvasPath)
-      setPendingCanvasPath(null)
-    }
-  }, [pendingCanvasPath, setPendingCanvasPath])
-
-  useEffect(() => {
     if (pendingPdfPath) {
       setOpenPdfPath(pendingPdfPath)
       setNewFilePath(pendingPdfPath)
       setPendingPdfPath(null)
     }
   }, [pendingPdfPath, setPendingPdfPath])
+
+  useEffect(() => {
+    if (pendingCanvasPath) {
+      setOpenCanvasPath(pendingCanvasPath)
+      setNewFilePath(pendingCanvasPath)
+      setPendingCanvasPath(null)
+    }
+  }, [pendingCanvasPath, setPendingCanvasPath])
 
   const refresh = useCallback(async () => {
     const items = await collectBrowserFiles(vaultFs, currentFolder, showHidden)
@@ -516,43 +516,7 @@ export function FileBrowserView({ showHidden = false }: { showHidden?: boolean }
     }
   }
 
-  /* ---- Canvas / PDF sub-views ---- */
-  if (openCanvasPath) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="border-border bg-bg-secondary flex items-center gap-2 border-b px-3 py-1.5">
-          <Button variant="ghost" size="sm" onClick={() => setOpenCanvasPath(null)}>
-            <ChevronLeft className="size-4" />
-            Back
-          </Button>
-          <InlineFileTitle
-            path={openCanvasPath}
-            autoFocus={newFilePath === openCanvasPath}
-            onFocused={() => setNewFilePath(null)}
-            onRename={(oldPath, newName) =>
-              void handleInlineRenameFile(oldPath, newName, setOpenCanvasPath)
-            }
-          />
-        </div>
-        <CanvasEditor
-          path={openCanvasPath}
-          onOpenNotePath={(notePath) => {
-            useUiStore.getState().setActiveView(ViewMode.Vault)
-            useUiStore.getState().setVaultMode('tree')
-            useFileTreeStore.getState().setSelectedPath(notePath)
-            useEditorStore.getState().openTab({
-              id: crypto.randomUUID(),
-              path: notePath,
-              type: editorTabTypeFromVaultPath(notePath),
-              title: titleFromVaultPath(notePath),
-              isDirty: false,
-            })
-          }}
-        />
-      </div>
-    )
-  }
-
+  /* ---- PDF sub-view ---- */
   if (openPdfPath) {
     return (
       <div className="flex h-full min-h-0 flex-col">
@@ -571,6 +535,33 @@ export function FileBrowserView({ showHidden = false }: { showHidden?: boolean }
           />
         </div>
         <PdfViewer path={openPdfPath} />
+      </div>
+    )
+  }
+
+  /* ---- Canvas sub-view ---- */
+  if (openCanvasPath) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="border-border bg-bg-secondary flex items-center gap-2 border-b px-3 py-1.5">
+          <Button variant="ghost" size="sm" onClick={() => setOpenCanvasPath(null)}>
+            <ChevronLeft className="size-4" />
+            Back
+          </Button>
+          <InlineFileTitle
+            path={openCanvasPath}
+            autoFocus={newFilePath === openCanvasPath}
+            onFocused={() => setNewFilePath(null)}
+            onRename={(oldPath, newName) =>
+              void handleInlineRenameFile(oldPath, newName, setOpenCanvasPath)
+            }
+          />
+        </div>
+        <CanvasEditor
+          key={openCanvasPath}
+          tabId={`fb-canvas-${openCanvasPath}`}
+          path={openCanvasPath}
+        />
       </div>
     )
   }

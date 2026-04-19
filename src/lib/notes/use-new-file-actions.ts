@@ -8,7 +8,7 @@ import { useEditorStore } from '@/stores/editor'
 import { useFileTreeStore } from '@/stores/file-tree'
 import { DEFAULT_VAULT_CONFIG, ViewMode } from '@/types/vault'
 import { createBlankPdf } from '@/lib/pdf/page-operations'
-import { createEmptyCanvas, serializeCanvas } from '@/lib/canvas'
+import { createEmptyCanvasJson } from '@/lib/canvas/serializer'
 import { createEmptyKanban } from '@/lib/kanban'
 import { reindexMarkdownPath } from '@/lib/search/build-vault-index'
 import { toast } from '@/stores/toast'
@@ -81,7 +81,7 @@ export function useNewFileActions(onDone: () => void) {
       const filename = `${stem}.canvas`
       const dir = defaultDir()
       const path = dir ? `${dir}/${filename}` : filename
-      await vaultFs.writeTextFile(path, serializeCanvas(createEmptyCanvas()))
+      await vaultFs.writeTextFile(path, createEmptyCanvasJson())
       useUiStore.getState().setActiveView(ViewMode.Vault)
       useUiStore.getState().setVaultMode('tree')
       useFileTreeStore.getState().setSelectedPath(path)

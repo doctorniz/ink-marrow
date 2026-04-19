@@ -118,22 +118,12 @@ How this file is organized:
 - [x] New PDF Note: page style (blank/lined/grid/dot grid), page size (A4/Letter/Custom) — style/size chip selectors, creates via `PDFDocument.create()` + `insertBlankPage`
 - [x] PDF Note creation via pdf-lib with styled backgrounds — reuses `page-operations.ts` `drawPageStyle` (lined/grid/dot-grid)
 - [x] Template management UI in `_marrow/templates/` — `TemplateManager` with list, delete, and create form; backed by `lib/notes/template-store.ts`
-- [x] **Unlimited Canvas**: Fabric.js infinite surface with pan and zoom — `CanvasEditor` with mouse-wheel zoom + middle-click/Alt-drag pan, min/max zoom 0.1–5×
-- [x] Freehand drawing on canvas with pressure sensitivity — `PencilBrush` drawing mode, paths recorded as `CanvasDrawingNode` with per-point pressure support
-- [x] Text cards: resizable text blocks with basic markdown formatting — `FabricTextbox` placed on click with Text tool, serialized as `CanvasTextNode`; sticky notes via `FabricRect` + `FabricTextbox`
-- [x] Image embeds: drag-and-drop onto canvas — file picker → `FileReader` → `FabricImage.fromURL`, stored as `CanvasImageNode` (data URL)
-
-### Week 12: Canvas Features & Polish
-
-- [x] Canvas connectors: arrows/lines between objects — Connect tool: click two nodes to draw a `FabricLine` + `FabricTriangle` arrow; stored as `CanvasEdge`
-- [x] Sticky notes: colored blocks for quick ideas — already in Week 11; this week adds random color cycling and persistence in `CanvasFile.frames`
-- [x] Sections/frames: group canvas regions for presentation — `handleAddFrame` creates a dashed-border `FabricRect` + label; stored as `CanvasFrame` with label/color
-- [x] Canvas export to PDF/PNG — Export PNG via `fc.toDataURL()` at 2× multiplier; Export PDF via lazy-loaded pdf-lib `embedPng` → download
-- [x] Canvas auto-save to `.canvas` JSON — 15 s `setInterval` + `window blur` auto-save (mirrors PDF auto-save pattern)
-- [x] Canvas cross-linking via `[[wiki-links]]` — `CanvasWikiLinkNode` type; toolbar button prompts for target, renders as blue pill card on canvas
+- [x] **Unlimited Canvas (v1 — Fabric.js)**: ~~original Fabric.js implementation~~ **superseded by PixiJS v2 below**
+- [x] **Canvas Engine v2 (PixiJS)**: Rebuilt canvas editor using PixiJS v8 (WebGL). Raster-first, layer-based drawing surface (Magma/Photoshop style). 3-column layout: vertical tool strip (left), PixiJS WebGL canvas (center, infinite pan/zoom 0.1×–10×), properties panel (right — Color/Brush/Layers). Brush engine with Pencil (Catmull-Rom spline), Pen/Ink (velocity-sensitive), Marker strokes. Layers with opacity, visibility, lock, blend modes. Per-layer undo via base64 snapshots. `.canvas` v2 JSON format stores `layers[]` with base64 imageData. Pressure sensitivity via Pointer Events API.
+- [x] Canvas export to PDF/PNG — Export PNG via PixiJS `renderer.extract`; Export PDF via pdf-lib `embedPng`
+- [x] Canvas auto-save to `.canvas` JSON — ~3s interval + visibility/blur + flush before rename
 - [x] Service Worker for offline caching (Workbox) — `public/sw.js` stale-while-revalidate strategy, precaches shell; registered in root layout
-- [x] Performance optimization pass — Fabric.js `requestRenderAll` for panning (batched), canvas keyboard shortcuts scope-guarded (skip in inputs), `ResizeObserver` for container
-- [x] Bug fixes and UI polish — AppShell keyboard shortcuts remapped (Ctrl+1/2 views, Ctrl+\ sidebar, Ctrl+N new, Ctrl+F search, Ctrl+Shift+? help); canvas Delete/Backspace removes selected objects
+- [x] Bug fixes and UI polish — AppShell keyboard shortcuts remapped (Ctrl+1/2 views, Ctrl+\ sidebar, Ctrl+N new, Ctrl+F search, Ctrl+Shift+? help)
 - [x] Keyboard shortcuts documentation — `lib/keyboard-shortcuts.ts` defines all shortcuts; `KeyboardShortcutsDialog` (Radix) groups by category; opened via Ctrl+Shift+?
 - [x] PWA manifest and icons — `public/manifest.json` with standalone display, SVG icon; `layout.tsx` adds manifest link, theme-color viewport, apple-web-app meta, service worker registration
 

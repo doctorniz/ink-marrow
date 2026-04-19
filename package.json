@@ -16,7 +16,7 @@
         "test:ui": "vitest --ui",
         "test:e2e": "playwright test",
         "typecheck": "tsc --noEmit",
-        "git:sync": "git add . && git commit -m 'Scaffolding' && git push"
+        "git:sync": "git add . && git commit -m 'Added features - Canvas rewrite, introducing DOC/DOCX support' && git push"
     },
     "dependencies": {
         "@radix-ui/react-context-menu": "^2.2.0",
@@ -63,6 +63,7 @@
         "next": "^15.2.0",
         "pdf-lib": "^1.17.1",
         "pdfjs-dist": "^4.10.0",
+        "pixi.js": "^8.18.1",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "tailwind-merge": "^3.0.0",

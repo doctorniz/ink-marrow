@@ -35,7 +35,7 @@ export function AppShell({ onCloseVault }: { onCloseVault: () => void }) {
     function onBeforeUnload(e: BeforeUnloadEvent) {
       const hasDirtyTabs = useEditorStore.getState().tabs.some((t) => t.isDirty)
       const hasDirtyPdf = usePdfStore.getState().hasUnsavedChanges
-      const hasDirtyCanvas = useCanvasStore.getState().isDirty
+      const hasDirtyCanvas = useCanvasStore.getState().hasUnsavedChanges
       if (hasDirtyTabs || hasDirtyPdf || hasDirtyCanvas) {
         e.preventDefault()
       }

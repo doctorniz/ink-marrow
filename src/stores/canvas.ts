@@ -1,120 +1,142 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import type { CanvasFile, CanvasViewport } from '@/types/canvas'
-
-/** Selected node ids as a map (Immer-friendly). */
-export type SelectedNodeIdsMap = Record<string, true>
-
-/** Toolbar tools (sticky/connect creation removed from UI; existing nodes still load). */
-export type CanvasActiveTool = 'select' | 'draw' | 'text' | 'erase'
+import type { CanvasTool, BrushSettings, CanvasLayerMeta, ViewportState } from '@/types/canvas'
+import { DEFAULT_BRUSH, DEFAULT_VIEWPORT } from '@/lib/canvas/constants'
 
 interface CanvasState {
-  file: CanvasFile | null
-  path: string | null
-  viewport: CanvasViewport
-  selectedNodeIds: SelectedNodeIdsMap
-  activeTool: CanvasActiveTool
-  strokeColor: string
-  strokeWidth: number
-  strokeOpacity: number
-  isDirty: boolean
-  /** Registered by the active CanvasEditor; syncs Fabric state to disk synchronously. */
-  _flushSave: (() => Promise<void>) | null
+  /* Tool */
+  activeTool: CanvasTool
+  brushSettings: BrushSettings
+  eraserSize: number
 
-  setFile: (file: CanvasFile, path: string) => void
-  setViewport: (viewport: CanvasViewport) => void
-  setSelectedNodes: (ids: Iterable<string>) => void
-  setActiveTool: (tool: CanvasState['activeTool']) => void
-  setStrokeColor: (color: string) => void
-  setStrokeWidth: (width: number) => void
-  setStrokeOpacity: (opacity: number) => void
+  /* Layers (metadata only — GPU state lives in engine ref) */
+  layers: CanvasLayerMeta[]
+  activeLayerId: string | null
+
+  /* Viewport */
+  viewport: ViewportState
+
+  /* File state */
+  hasUnsavedChanges: boolean
+
+  /* Undo */
+  canUndo: boolean
+  canRedo: boolean
+
+  /* Recent colors */
+  recentColors: string[]
+
+  /* Actions */
+  setActiveTool: (tool: CanvasTool) => void
+  setBrushSettings: (partial: Partial<BrushSettings>) => void
+  setEraserSize: (size: number) => void
+  setLayers: (layers: CanvasLayerMeta[]) => void
+  setActiveLayerId: (id: string | null) => void
+  setViewport: (vp: ViewportState) => void
   markDirty: () => void
   markSaved: () => void
-  registerFlushSave: (fn: (() => Promise<void>) | null) => void
+  setUndoState: (canUndo: boolean, canRedo: boolean) => void
+  pushRecentColor: (color: string) => void
   reset: () => void
 }
 
-function idsToMap(ids: Iterable<string>): SelectedNodeIdsMap {
-  const m: SelectedNodeIdsMap = {}
-  for (const id of ids) {
-    m[id] = true
-  }
-  return m
-}
+const MAX_RECENT_COLORS = 12
 
 export const useCanvasStore = create<CanvasState>()(
   immer((set) => ({
-    file: null,
-    path: null,
-    viewport: { x: 0, y: 0, zoom: 1 },
-    selectedNodeIds: {},
-    activeTool: 'draw',
-    strokeColor: '#212529',
-    strokeWidth: 3,
-    strokeOpacity: 1,
-    isDirty: false,
-    _flushSave: null,
+    activeTool: 'brush',
+    brushSettings: { ...DEFAULT_BRUSH },
+    eraserSize: 20,
 
-    setFile: (file, path) =>
-      set((state) => {
-        state.file = file
-        state.path = path
-        state.isDirty = false
-      }),
+    layers: [],
+    activeLayerId: null,
 
-    setViewport: (viewport) =>
-      set((state) => {
-        state.viewport = viewport
-      }),
+    viewport: { ...DEFAULT_VIEWPORT },
 
-    setSelectedNodes: (ids) =>
-      set((state) => {
-        state.selectedNodeIds = idsToMap(ids)
-      }),
+    hasUnsavedChanges: false,
+
+    canUndo: false,
+    canRedo: false,
+
+    recentColors: [],
 
     setActiveTool: (tool) =>
-      set((state) => {
-        state.activeTool = tool
+      set((s) => {
+        s.activeTool = tool
       }),
 
-    setStrokeColor: (color) =>
-      set((state) => {
-        state.strokeColor = color
+    setBrushSettings: (partial) =>
+      set((s) => {
+        Object.assign(s.brushSettings, partial)
+        if (partial.size !== undefined) {
+          s.brushSettings.size = Math.max(1, Math.min(200, partial.size))
+        }
+        if (partial.opacity !== undefined) {
+          s.brushSettings.opacity = Math.max(0, Math.min(1, partial.opacity))
+        }
+        if (partial.hardness !== undefined) {
+          s.brushSettings.hardness = Math.max(0, Math.min(1, partial.hardness))
+        }
+        if (partial.spacing !== undefined) {
+          s.brushSettings.spacing = Math.max(0.05, Math.min(1, partial.spacing))
+        }
       }),
 
-    setStrokeWidth: (width) =>
-      set((state) => {
-        state.strokeWidth = width
+    setEraserSize: (size) =>
+      set((s) => {
+        s.eraserSize = Math.max(1, Math.min(200, size))
       }),
 
-    setStrokeOpacity: (opacity) =>
-      set((state) => {
-        state.strokeOpacity = Math.max(0, Math.min(1, opacity))
+    setLayers: (layers) =>
+      set((s) => {
+        s.layers = layers
+      }),
+
+    setActiveLayerId: (id) =>
+      set((s) => {
+        s.activeLayerId = id
+      }),
+
+    setViewport: (vp) =>
+      set((s) => {
+        s.viewport = vp
       }),
 
     markDirty: () =>
-      set((state) => {
-        state.isDirty = true
+      set((s) => {
+        s.hasUnsavedChanges = true
       }),
 
     markSaved: () =>
-      set((state) => {
-        state.isDirty = false
+      set((s) => {
+        s.hasUnsavedChanges = false
       }),
 
-    registerFlushSave: (fn) =>
-      set((state) => {
-        state._flushSave = fn as never
+    setUndoState: (canUndo, canRedo) =>
+      set((s) => {
+        s.canUndo = canUndo
+        s.canRedo = canRedo
       }),
 
-    /** Clear file-bound state when leaving the canvas editor; keep tool + brush prefs (LAUNCH C2). */
+    pushRecentColor: (color) =>
+      set((s) => {
+        s.recentColors = [
+          color,
+          ...s.recentColors.filter((c) => c !== color),
+        ].slice(0, MAX_RECENT_COLORS)
+      }),
+
     reset: () =>
-      set((state) => {
-        state.file = null
-        state.path = null
-        state.selectedNodeIds = {}
-        state.isDirty = false
-        state._flushSave = null
+      set((s) => {
+        s.activeTool = 'brush'
+        s.brushSettings = { ...DEFAULT_BRUSH }
+        s.eraserSize = 20
+        s.layers = []
+        s.activeLayerId = null
+        s.viewport = { ...DEFAULT_VIEWPORT }
+        s.hasUnsavedChanges = false
+        s.canUndo = false
+        s.canRedo = false
       }),
   })),
 )
