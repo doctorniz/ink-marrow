@@ -10,18 +10,23 @@
  *        PNG data URL in `CanvasLayerData.imageData`. Dense 5-layer
  *        documents could balloon to 10–25 MB of inline JSON — slow to
  *        parse, slow to sync, visible pain in Dropbox. Read-only now.
- *   v4 — sidecar-PNG format. JSON holds metadata only; layer pixels live
- *        in binary PNG files at `<canvasPath>.assets/<layerId>.png`.
- *        `CanvasLayerData.imageData` is always `null` for v4 files. The
- *        JSON stays small and human-readable; per-layer sync deltas are
- *        possible because each PNG is its own sync unit.
+ *   v4 — sidecar-PNG-beside-file format. JSON holds metadata; pixel PNGs
+ *        lived at `<canvasPath>.assets/<layerId>.png`. Clutters the
+ *        vault with visible sidecar folders next to every `.canvas` and
+ *        couples file-rename semantics to the pixel folder. Readable but
+ *        no longer written.
+ *   v5 — current. JSON holds metadata plus a stable `assetId` UUID; pixel
+ *        PNGs live in a hidden per-canvas subdirectory under the vault's
+ *        `_marrow/_drawings/<assetId>/`. The `assetId` is generated once
+ *        on first save and never rotates, so renaming the `.canvas` file
+ *        leaves its pixel folder untouched — the id travels with the JSON,
+ *        not the filename. `CanvasLayerData.imageData` is always `null`.
  *
- * v3 files remain readable (inline imageData path is still honoured by
- * the deserialiser). They get rewritten as v4 on the next save. Users
- * whose vaults are mid-migration may see a mix of v3 and v4 files for
- * a while; that is fine.
+ * v3 and v4 files remain readable; both get rewritten as v5 on the next
+ * save. v4 → v5 migration leaves the old `.assets/` folder on disk as
+ * dead weight — same orphan policy as deleted-layer PNGs.
  */
-export const CANVAS_VERSION = 4
+export const CANVAS_VERSION = 5
 
 /** Persisted viewport state (pan + zoom). */
 export interface ViewportState {
@@ -40,9 +45,10 @@ export interface CanvasLayerData {
   blendMode: string // PixiJS blend mode name
   /**
    * v3-only: base64 PNG data URL of the rendered layer pixels, or null
-   * if empty. v4 files write `null` here — pixel data lives in a sidecar
-   * PNG at `<canvasPath>.assets/<id>.png` instead. The field is retained
-   * to keep v3 files readable without a separate schema.
+   * if empty. v4/v5 files write `null` here — pixel data lives in a
+   * sidecar PNG file on disk (path differs by version; see `CanvasFile`).
+   * The field is retained to keep v3 files readable without a separate
+   * schema.
    */
   imageData: string | null
 }
@@ -66,6 +72,13 @@ export interface CanvasFile {
   viewport: ViewportState
   layers: CanvasLayerData[]
   activeLayerId: string
+  /**
+   * Stable identifier for this canvas's sidecar folder under
+   * `_marrow/_drawings/<assetId>/`. Generated on first v5 save and never
+   * rotated — rename of the `.canvas` file does not move or rename the
+   * pixel folder. Missing on v3 / v4 files; the writer will mint one.
+   */
+  assetId?: string
 }
 
 /* ------------------------------------------------------------------ */

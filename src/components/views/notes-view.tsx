@@ -1,17 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { FileText, Folder } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { FileText, Folder, Sparkles } from 'lucide-react'
 import { useVaultSession } from '@/contexts/vault-fs-context'
 import { vaultPathsPointToSameFile } from '@/lib/fs/vault-path-equiv'
 import { NotesWorkspaceProvider, useNotesWorkspace } from '@/contexts/notes-workspace-context'
 import { NotesFileTree } from '@/components/notes/notes-file-tree'
 import { EditorTabBar } from '@/components/notes/editor-tab-bar'
-import { MarkdownNoteEditor } from '@/components/notes/markdown-note-editor'
 import {
-  BacklinksPanel,
-  BACKLINKS_NARROW_MEDIA_QUERY,
-} from '@/components/notes/backlinks-panel'
+  MarkdownNoteEditor,
+  type MarkdownNoteEditorHandle,
+} from '@/components/notes/markdown-note-editor'
+import { ChatPanel } from '@/components/chat/chat-panel'
+import { EditorRightColumn } from '@/components/notes/editor-right-column'
+import { BacklinksSection } from '@/components/notes/backlinks-section'
+import { ensureChatAssetIdForPath } from '@/lib/chat/asset-index'
+import { cn } from '@/utils/cn'
 import { PdfViewer } from '@/components/pdf/pdf-viewer'
 import { CanvasEditor } from '@/components/canvas/canvas-editor'
 import { KanbanEditor } from '@/components/kanban/kanban-editor'
@@ -181,14 +185,77 @@ function NotesViewInner() {
     window.dispatchEvent(new CustomEvent('ink:vault-changed'))
   }, [])
 
-  const isNarrowBacklinks = useMediaQuery(BACKLINKS_NARROW_MEDIA_QUERY)
-  const [backlinksExpanded, setBacklinksExpanded] = useState(true)
+  // Collapsible backlinks section (lives inside the unified right column
+  // for markdown tabs). Persisted so the user's choice survives reloads.
+  const BACKLINKS_COLLAPSED_KEY = 'ink-marrow:backlinks-collapsed'
+  const [backlinksCollapsed, setBacklinksCollapsed] = useState(false)
   useLayoutEffect(() => {
-    setBacklinksExpanded(!window.matchMedia(BACKLINKS_NARROW_MEDIA_QUERY).matches)
+    try {
+      const raw = localStorage.getItem(BACKLINKS_COLLAPSED_KEY)
+      if (raw === '1') setBacklinksCollapsed(true)
+    } catch {
+      /* localStorage unavailable */
+    }
   }, [])
   useEffect(() => {
-    if (isNarrowBacklinks) setBacklinksExpanded(false)
-  }, [isNarrowBacklinks])
+    try {
+      localStorage.setItem(BACKLINKS_COLLAPSED_KEY, backlinksCollapsed ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [backlinksCollapsed])
+
+  // Chat panel — one-at-a-time, per-path. Markdown tabs use frontmatter
+  // via `MarkdownNoteEditor.ensureChatAssetId`; PDFs have no frontmatter,
+  // so their id is resolved through `_marrow/_chats/index.json`.
+  const markdownEditorRef = useRef<MarkdownNoteEditorHandle | null>(null)
+  const [chatAssetIdByPath, setChatAssetIdByPath] = useState<Record<string, string>>({})
+  const [chatOpenByPath, setChatOpenByPath] = useState<Record<string, boolean>>({})
+
+  const toggleChatForActivePath = useCallback(() => {
+    if (!activeTab || activeTab.type !== 'markdown') return
+    const path = activeTab.path
+    setChatOpenByPath((prev) => {
+      const nextOpen = !prev[path]
+      if (nextOpen) {
+        const id = markdownEditorRef.current?.ensureChatAssetId()
+        if (id) {
+          setChatAssetIdByPath((m) =>
+            m[path] === id ? m : { ...m, [path]: id },
+          )
+        }
+      }
+      return { ...prev, [path]: nextOpen }
+    })
+  }, [activeTab])
+
+  const closeChatForPath = useCallback((path: string) => {
+    setChatOpenByPath((prev) => ({ ...prev, [path]: false }))
+  }, [])
+
+  // PDF chat — async asset-id resolution via the index JSON.
+  const togglePdfChatForActivePath = useCallback(() => {
+    if (!activeTab || activeTab.type !== 'pdf') return
+    const path = activeTab.path
+    const currentlyOpen = chatOpenByPath[path] ?? false
+    if (currentlyOpen) {
+      setChatOpenByPath((prev) => ({ ...prev, [path]: false }))
+      return
+    }
+    // Opening — ensure we have an id, then open.
+    if (chatAssetIdByPath[path]) {
+      setChatOpenByPath((prev) => ({ ...prev, [path]: true }))
+      return
+    }
+    void ensureChatAssetIdForPath(vaultFs, path)
+      .then((id) => {
+        setChatAssetIdByPath((m) => ({ ...m, [path]: id }))
+        setChatOpenByPath((prev) => ({ ...prev, [path]: true }))
+      })
+      .catch(() => {
+        toast.error('Could not open chat for this PDF')
+      })
+  }, [activeTab, chatOpenByPath, chatAssetIdByPath, vaultFs])
 
   const isMobileTree = useMediaQuery(MOBILE_NAV_MEDIA_QUERY)
   const [notesTreeExpanded, setNotesTreeExpanded] = useState(true)
@@ -283,35 +350,67 @@ function NotesViewInner() {
         <EditorTabBar />
         {activeTab?.type === 'markdown' ? (
           <div className="relative flex min-h-0 flex-1">
-            {isNarrowBacklinks && backlinksExpanded && (
-              <button
-                type="button"
-                className="absolute inset-0 z-10 bg-black/20"
-                aria-label="Close backlinks panel"
-                onClick={() => setBacklinksExpanded(false)}
-              />
-            )}
-            <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
-              <MarkdownNoteEditor
-                key={activeTab.id}
-                tabId={activeTab.id}
-                path={activeTab.path}
-                markdownPaths={markdownPaths}
-                onOpenNotePath={openNotePath}
-                onPersisted={bumpScan}
-                onRenamed={vaultChanged}
-              />
-            </div>
-            <BacklinksPanel
-              vaultFs={vaultFs}
-              markdownPaths={markdownPaths}
-              activeNotePath={activeTab.path}
-              scanPulse={scanPulse}
-              onOpenNote={openNotePath}
-              expanded={backlinksExpanded}
-              onExpandedChange={setBacklinksExpanded}
-              isNarrow={isNarrowBacklinks}
-            />
+            <EditorRightColumn
+              storageKey="ink-marrow:right-panel-width:md"
+              defaultRightPx={360}
+              minRightPx={240}
+              maxRightRatio={0.6}
+              chat={
+                chatOpenByPath[activeTab.path] &&
+                chatAssetIdByPath[activeTab.path] ? (
+                  <ChatPanel
+                    chatAssetId={chatAssetIdByPath[activeTab.path]}
+                    documentPath={activeTab.path}
+                    onClose={() => closeChatForPath(activeTab.path)}
+                  />
+                ) : null
+              }
+              trailing={
+                <BacklinksSection
+                  vaultFs={vaultFs}
+                  markdownPaths={markdownPaths}
+                  activeNotePath={activeTab.path}
+                  scanPulse={scanPulse}
+                  onOpenNote={openNotePath}
+                  collapsed={backlinksCollapsed}
+                  onCollapsedChange={setBacklinksCollapsed}
+                  maxExpandedHeightClass={
+                    chatOpenByPath[activeTab.path] ? 'max-h-[40%]' : 'flex-1'
+                  }
+                />
+              }
+            >
+              <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
+                <MarkdownNoteEditor
+                  key={activeTab.id}
+                  ref={markdownEditorRef}
+                  tabId={activeTab.id}
+                  path={activeTab.path}
+                  markdownPaths={markdownPaths}
+                  onOpenNotePath={openNotePath}
+                  onPersisted={bumpScan}
+                  onRenamed={vaultChanged}
+                />
+                <button
+                  type="button"
+                  onClick={toggleChatForActivePath}
+                  title={
+                    chatOpenByPath[activeTab.path]
+                      ? 'Hide chat'
+                      : 'Chat with this document'
+                  }
+                  aria-label="Toggle chat panel"
+                  className={cn(
+                    'absolute right-3 top-2 z-20 flex size-8 items-center justify-center rounded-md border transition-colors',
+                    chatOpenByPath[activeTab.path]
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border bg-bg/80 text-fg-secondary hover:text-accent hover:border-accent/60 backdrop-blur',
+                  )}
+                >
+                  <Sparkles className="size-4" />
+                </button>
+              </div>
+            </EditorRightColumn>
           </div>
         ) : activeTab?.type === 'kanban' ? (
           <div key={activeTab.id} className="min-h-0 flex-1">
@@ -324,8 +423,45 @@ function NotesViewInner() {
             />
           </div>
         ) : activeTab?.type === 'pdf' ? (
-          <div key={activeTab.id} className="min-h-0 flex-1">
-            <PdfViewer path={activeTab.path} />
+          <div key={activeTab.id} className="relative flex min-h-0 flex-1">
+            <EditorRightColumn
+              storageKey="ink-marrow:right-panel-width:pdf"
+              defaultRightPx={420}
+              minRightPx={300}
+              maxRightRatio={0.6}
+              chat={
+                chatOpenByPath[activeTab.path] &&
+                chatAssetIdByPath[activeTab.path] ? (
+                  <ChatPanel
+                    chatAssetId={chatAssetIdByPath[activeTab.path]}
+                    documentPath={activeTab.path}
+                    onClose={() => closeChatForPath(activeTab.path)}
+                  />
+                ) : null
+              }
+            >
+              <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
+                <PdfViewer path={activeTab.path} />
+                <button
+                  type="button"
+                  onClick={togglePdfChatForActivePath}
+                  title={
+                    chatOpenByPath[activeTab.path]
+                      ? 'Hide chat'
+                      : 'Chat with this PDF'
+                  }
+                  aria-label="Toggle chat panel"
+                  className={cn(
+                    'absolute right-3 top-2 z-20 flex size-8 items-center justify-center rounded-md border transition-colors',
+                    chatOpenByPath[activeTab.path]
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border bg-bg/80 text-fg-secondary hover:text-accent hover:border-accent/60 backdrop-blur',
+                  )}
+                >
+                  <Sparkles className="size-4" />
+                </button>
+              </div>
+            </EditorRightColumn>
           </div>
         ) : activeTab?.type === 'canvas' ? (
           <div key={activeTab.id} className="min-h-0 flex-1">

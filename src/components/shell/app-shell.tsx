@@ -7,7 +7,6 @@ import { ViewRouter } from '@/components/shell/view-router'
 import { VaultSearchBootstrap } from '@/components/search/vault-search-bootstrap'
 import { KeyboardShortcutsDialog } from '@/components/shell/keyboard-shortcuts-dialog'
 import { SettingsDialog } from '@/components/shell/settings-dialog'
-import { ComingSoonChat } from '@/components/shell/coming-soon-chat'
 import { useUiStore } from '@/stores/ui'
 import { useEditorStore } from '@/stores/editor'
 import { usePdfStore } from '@/stores/pdf'
@@ -15,6 +14,7 @@ import { useCanvasStore } from '@/stores/canvas'
 import { ViewMode } from '@/types/vault'
 
 const VIEW_BY_DIGIT: Record<string, ViewMode> = {
+  '0': ViewMode.VaultChat,
   '1': ViewMode.Vault,
   '2': ViewMode.Board,
   '3': ViewMode.Tasks,
@@ -104,7 +104,6 @@ export function AppShell({ onCloseVault }: { onCloseVault: () => void }) {
       </main>
       <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      <ComingSoonChat />
     </div>
   )
 }

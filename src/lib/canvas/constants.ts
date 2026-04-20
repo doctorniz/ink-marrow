@@ -4,6 +4,19 @@ export const DEFAULT_CANVAS_WIDTH = 2048
 export const DEFAULT_CANVAS_HEIGHT = 2048
 export const DEFAULT_BACKGROUND = '#ffffff'
 
+/**
+ * Vault-root-relative directory that holds per-canvas pixel folders
+ * (one subfolder per `.canvas` file, keyed by stable `assetId`).
+ *
+ * Lives under `_marrow/` so it is hidden by the vault tree / browser /
+ * search — same policy as `_marrow/snapshots/` for PDF backups. Keeping
+ * the PNGs out of the user-visible tree avoids confusing sibling folders
+ * next to every drawing, and decouples file-rename from pixel storage:
+ * the `assetId` is stored inside the `.canvas` JSON, so renaming the
+ * file carries the reference along with it without touching the folder.
+ */
+export const CANVAS_DRAWINGS_DIR = '_marrow/_drawings'
+
 export const MIN_ZOOM = 0.1
 export const MAX_ZOOM = 10
 

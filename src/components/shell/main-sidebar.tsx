@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Sparkles,
   Sun,
   Vault,
 } from 'lucide-react'
@@ -36,6 +37,7 @@ type NavEntry =
   | { kind: 'todo'; label: string; icon: typeof Vault }
 
 const NAV: NavEntry[] = [
+  { kind: 'view', mode: ViewMode.VaultChat, label: 'Chat',      icon: Sparkles,      shortcut: '0' },
   { kind: 'view', mode: ViewMode.Vault,     label: 'Vault',     icon: Vault,         shortcut: '1' },
   { kind: 'view', mode: ViewMode.Board,     label: 'Board',     icon: LayoutGrid,    shortcut: '2' },
   { kind: 'view', mode: ViewMode.Tasks,     label: 'Tasks',     icon: CheckSquare,   shortcut: '3' },

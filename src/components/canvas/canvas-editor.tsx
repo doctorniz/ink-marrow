@@ -67,10 +67,11 @@ export function CanvasEditor({ tabId, path, onPersisted }: CanvasEditorProps) {
         await engine.init(containerRef.current)
         if (signal.cancelled) { engine.destroy(); return }
 
-        // Load file. v4 format reads metadata JSON plus sidecar PNGs
-        // under `<path>.assets/<layerId>.png`; v3 files with inline
-        // base64 pixels are still honoured by the deserializer and get
-        // rewritten as v4 on the next save.
+        // Load file. v5 reads metadata JSON plus PNGs from
+        // `_marrow/_drawings/<assetId>/<layerId>.png`. v4 falls back to
+        // the legacy sibling `<path>.assets/<layerId>.png` folder; v3
+        // files with inline base64 pixels are still honoured. Both
+        // older formats are rewritten as v5 on the next save.
         try {
           await readCanvasFile(engine, vaultFs, path)
           if (signal.cancelled) { engine.destroy(); return }

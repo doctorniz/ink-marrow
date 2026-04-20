@@ -5,6 +5,13 @@ export interface NoteFrontmatter {
   modified?: string
   starred?: boolean
   template?: string
+  /**
+   * Stable UUID pointing at this note's chat folder under
+   * `_marrow/_chats/<chatAssetId>/`. Minted lazily on first chat open
+   * and persisted in frontmatter so it travels with the file across
+   * renames — same pattern as Canvas v5's `assetId`.
+   */
+  chatAssetId?: string
   [key: string]: unknown
 }
 

@@ -1,7 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CalendarDays, Check, FolderOpen, Loader2, X } from 'lucide-react'
+import {
+  CalendarDays,
+  Check,
+  FolderOpen,
+  Loader2,
+  X,
+} from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 import * as Tabs from '@radix-ui/react-tabs'
 import { useVaultSession } from '@/contexts/vault-fs-context'
@@ -9,6 +15,16 @@ import { useVaultStore } from '@/stores/vault'
 import { DEFAULT_VAULT_CONFIG, type VaultConfig } from '@/types/vault'
 import { saveVaultConfig } from '@/lib/vault'
 import { VaultDropboxSyncPanel } from '@/components/views/vault-dropbox-sync-panel'
+import {
+  clearChatKey,
+  getChatKey,
+  setChatKey,
+} from '@/lib/chat/key-store'
+import {
+  DEFAULT_CHAT_SETTINGS,
+  type ChatProviderId,
+  type ChatSettings,
+} from '@/types/chat'
 import { cn } from '@/utils/cn'
 
 /* ------------------------------------------------------------------ */
@@ -360,11 +376,297 @@ function CalendarSettingsTab() {
   )
 }
 
+/* ------------------------------------------------------------------ */
+/*  AI tab                                                              */
+/* ------------------------------------------------------------------ */
+
+interface ProviderOption {
+  id: ChatProviderId
+  label: string
+  hint: string
+  keyPlaceholder: string
+  modelPlaceholder: string
+  baseUrlPlaceholder: string
+}
+
+/**
+ * Order matters — OpenRouter first (single key covers many models), then
+ * the direct providers in a friendly order. `window-ai` and local-browser
+ * options are deliberately omitted until they're implemented end-to-end.
+ */
+const PROVIDER_OPTIONS: ProviderOption[] = [
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    hint: 'One key unlocks Anthropic, OpenAI, Gemini, and many open models.',
+    keyPlaceholder: 'sk-or-v1-…',
+    modelPlaceholder: 'anthropic/claude-sonnet-4',
+    baseUrlPlaceholder: 'https://openrouter.ai/api/v1',
+  },
+  {
+    id: 'anthropic',
+    label: 'Anthropic (direct)',
+    hint: 'Requires a browser-enabled API key. Use an organisation that allows direct browser access.',
+    keyPlaceholder: 'sk-ant-…',
+    modelPlaceholder: 'claude-sonnet-4-20250514',
+    baseUrlPlaceholder: 'https://api.anthropic.com/v1',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI (direct)',
+    hint: 'Works with Azure OpenAI, LM Studio, Ollama via a custom base URL.',
+    keyPlaceholder: 'sk-…',
+    modelPlaceholder: 'gpt-4o-mini',
+    baseUrlPlaceholder: 'https://api.openai.com/v1',
+  },
+  {
+    id: 'gemini',
+    label: 'Google Gemini',
+    hint: 'Get an API key at ai.google.dev. Keys are sent as a query parameter per Google spec.',
+    keyPlaceholder: 'AIza…',
+    modelPlaceholder: 'gemini-2.5-flash',
+    baseUrlPlaceholder: 'https://generativelanguage.googleapis.com/v1beta',
+  },
+  {
+    id: 'huggingface',
+    label: 'Hugging Face',
+    hint: 'OpenAI-compatible router at router.huggingface.co. Point the base URL at your Inference Endpoint to self-host.',
+    keyPlaceholder: 'hf_…',
+    modelPlaceholder: 'meta-llama/Meta-Llama-3-8B-Instruct',
+    baseUrlPlaceholder: 'https://router.huggingface.co/v1',
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama (local)',
+    hint: 'Run `ollama serve` (or the Ollama desktop app), then pick a pulled model. Leave the API key blank for vanilla local setups.',
+    keyPlaceholder: '(blank for local)',
+    modelPlaceholder: 'llama3.2',
+    baseUrlPlaceholder: 'http://localhost:11434/v1',
+  },
+  {
+    id: 'window-ai',
+    label: 'Chrome built-in (window.ai)',
+    hint: 'On-device Gemini Nano. Enable chrome://flags/#optimization-guide-on-device-model and restart Chrome. No key, no network.',
+    keyPlaceholder: '(not required)',
+    modelPlaceholder: 'gemini-nano',
+    baseUrlPlaceholder: '(not used)',
+  },
+  {
+    id: 'webllm',
+    label: 'WebLLM (in-browser, WebGPU)',
+    hint: 'Downloads a quantized model into the browser and runs on WebGPU. First load is slow (GB-scale weights); subsequent chats are instant. Requires `pnpm install @mlc-ai/web-llm`.',
+    keyPlaceholder: '(not required)',
+    modelPlaceholder: 'gemma-3-4b-it-q4f16_1-MLC',
+    baseUrlPlaceholder: '(not used)',
+  },
+]
+
+function chatDraft(draft: VaultConfig): ChatSettings {
+  return { ...DEFAULT_CHAT_SETTINGS, ...(draft.chat ?? {}) }
+}
+
+function AiTab({
+  draft,
+  set,
+  vaultId,
+}: {
+  draft: VaultConfig
+  set: <K extends keyof VaultConfig>(key: K, value: VaultConfig[K]) => void
+  vaultId: string
+}) {
+  const chat = chatDraft(draft)
+  const [apiKey, setApiKey] = useState<string>('')
+  const [keyStatus, setKeyStatus] = useState<'empty' | 'set' | 'loaded'>('empty')
+
+  const provider = chat.provider
+
+  // Load key from IndexedDB whenever provider changes.
+  useEffect(() => {
+    let cancelled = false
+    if (!provider) {
+      setApiKey('')
+      setKeyStatus('empty')
+      return
+    }
+    void getChatKey(provider, vaultId)
+      .then((rec) => {
+        if (cancelled) return
+        if (rec?.apiKey) {
+          setApiKey(rec.apiKey)
+          setKeyStatus('loaded')
+        } else {
+          setApiKey('')
+          setKeyStatus('empty')
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setApiKey('')
+        setKeyStatus('empty')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [provider, vaultId])
+
+  const setChat = useCallback(
+    <K extends keyof ChatSettings>(key: K, value: ChatSettings[K]) => {
+      set('chat', { ...chat, [key]: value })
+    },
+    [chat, set],
+  )
+
+  const handleSaveKey = useCallback(async () => {
+    if (!provider) return
+    const trimmed = apiKey.trim()
+    if (!trimmed) {
+      await clearChatKey(provider, vaultId)
+      setKeyStatus('empty')
+      return
+    }
+    await setChatKey(provider, vaultId, { apiKey: trimmed })
+    setKeyStatus('set')
+    setTimeout(() => setKeyStatus('loaded'), 1500)
+  }, [apiKey, provider, vaultId])
+
+  const handleClearKey = useCallback(async () => {
+    if (!provider) return
+    await clearChatKey(provider, vaultId)
+    setApiKey('')
+    setKeyStatus('empty')
+  }, [provider, vaultId])
+
+  return (
+    <div>
+      <SectionHeader>AI chat</SectionHeader>
+      <p className="text-fg-secondary mb-4 text-xs leading-relaxed">
+        Bring your own key. API keys are stored locally in this browser&apos;s
+        IndexedDB, never synced to Dropbox, and never sent anywhere except
+        the provider you select.
+      </p>
+      <div className="divide-border divide-y">
+        <Row label="Provider">
+          <select
+            value={provider ?? ''}
+            onChange={(e) => {
+              const val = e.target.value
+              setChat(
+                'provider',
+                val === '' ? null : (val as ChatProviderId),
+              )
+            }}
+            className={INPUT_CLS}
+          >
+            <option value="">Disabled</option>
+            {PROVIDER_OPTIONS.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </Row>
+
+        {provider && (() => {
+          const opt = PROVIDER_OPTIONS.find((p) => p.id === provider)
+          return (
+            <>
+              <Row label="API key" hint={opt?.hint}>
+                <div className="flex w-64 flex-col gap-1.5">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={opt?.keyPlaceholder ?? 'sk-…'}
+                    className={cn(INPUT_CLS, 'w-full')}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-fg-muted text-[10px]">
+                      {keyStatus === 'loaded'
+                        ? 'Key loaded from browser storage'
+                        : keyStatus === 'set'
+                          ? 'Saved'
+                          : 'No key saved for this provider'}
+                    </span>
+                    <div className="flex gap-1.5">
+                      {keyStatus === 'loaded' && (
+                        <button
+                          type="button"
+                          onClick={() => void handleClearKey()}
+                          className="text-danger hover:underline text-[11px]"
+                        >
+                          Clear
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveKey()}
+                        className="bg-accent text-accent-fg hover:bg-accent/90 rounded px-2 py-0.5 text-[11px] font-medium"
+                      >
+                        Save key
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </Row>
+              <Row label="Default model">
+                <input
+                  value={chat.model}
+                  onChange={(e) => setChat('model', e.target.value)}
+                  placeholder={opt?.modelPlaceholder ?? 'model-id'}
+                  className={INPUT_CLS}
+                  spellCheck={false}
+                />
+              </Row>
+              <Row label="Base URL (optional)">
+                <input
+                  value={chat.baseUrl ?? ''}
+                  onChange={(e) =>
+                    setChat('baseUrl', e.target.value || undefined)
+                  }
+                  placeholder={opt?.baseUrlPlaceholder ?? ''}
+                  className={INPUT_CLS}
+                  spellCheck={false}
+                />
+              </Row>
+              <Row
+                label="Context size"
+                hint="Max characters of the open document sent as context."
+              >
+                <NumberInput
+                  value={chat.maxContextChars}
+                  min={2000}
+                  max={400_000}
+                  suffix="chars"
+                  onChange={(v) => setChat('maxContextChars', v)}
+                />
+              </Row>
+              <Row label="System prompt override">
+                <textarea
+                  value={chat.systemPrompt ?? ''}
+                  onChange={(e) =>
+                    setChat('systemPrompt', e.target.value || undefined)
+                  }
+                  rows={3}
+                  placeholder="Leave blank to use the default."
+                  className={cn(INPUT_CLS, 'h-auto w-64 resize-y py-2')}
+                />
+              </Row>
+            </>
+          )
+        })()}
+      </div>
+    </div>
+  )
+}
+
 const TABS = [
   { id: 'vault', label: 'Vault' },
   { id: 'editor', label: 'Editor' },
   { id: 'snapshots', label: 'Snapshots' },
   { id: 'sync', label: 'Sync' },
+  { id: 'ai', label: 'AI' },
   { id: 'calendar', label: 'Calendar' },
 ] as const
 
@@ -377,7 +679,7 @@ export function SettingsDialog({
   open: boolean
   onOpenChange: (o: boolean) => void
 }) {
-  const { vaultFs } = useVaultSession()
+  const { vaultFs, vaultPath } = useVaultSession()
   const config = useVaultStore((s) => s.config)
   const updateConfig = useVaultStore((s) => s.updateConfig)
 
@@ -532,6 +834,9 @@ export function SettingsDialog({
                   saveFullConfig={saveConfigNow}
                   persistSyncFieldsToDisk={false}
                 />
+              </Tabs.Content>
+              <Tabs.Content value="ai">
+                <AiTab draft={draft} set={setField} vaultId={vaultPath} />
               </Tabs.Content>
               <Tabs.Content value="calendar">
                 <CalendarSettingsTab />

@@ -22,6 +22,12 @@ export interface VaultConfig {
   pdfPageStyle: 'blank' | 'lined' | 'grid'
   /** Cloud sync settings (Dropbox); self-hosted sync may be added later */
   sync?: VaultSyncConfig
+  /**
+   * AI / LLM chat settings. Safe-to-sync (provider id, model id, system
+   * prompt). API keys are stored separately in IndexedDB, NOT in this
+   * object — they should never land in the vault's `config.json`.
+   */
+  chat?: import('./chat').ChatSettings
 }
 
 export interface SnapshotConfig {
@@ -37,6 +43,12 @@ export interface AutoSaveConfig {
 }
 
 export enum ViewMode {
+  /**
+   * Tier-1 "whole vault" chat. Full-viewport BYO-LLM surface that can reach
+   * across every note/PDF in the vault, as opposed to the per-document chat
+   * panel that's scoped to the currently open file.
+   */
+  VaultChat = 'vault-chat',
   Vault = 'vault',
   /** @deprecated use ViewMode.Vault */
   FileBrowser = 'file-browser',

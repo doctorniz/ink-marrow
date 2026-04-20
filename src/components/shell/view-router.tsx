@@ -12,12 +12,16 @@ import { TasksView } from '@/components/views/tasks-view'
 import { BookmarksView } from '@/components/views/bookmarks-view'
 import { NewView } from '@/components/views/new-view'
 import { CalendarView } from '@/components/views/calendar-view'
+import { VaultChatView } from '@/components/views/vault-chat-view'
 
 export function ViewRouter() {
   const activeView = useUiStore((s) => s.activeView)
 
   let body: ReactNode
   switch (activeView) {
+    case ViewMode.VaultChat:
+      body = <VaultChatView />
+      break
     case ViewMode.Vault:
     // legacy routes — redirect into the vault (notes) view
     case ViewMode.FileBrowser:

@@ -22,6 +22,7 @@ import {
   Plus,
   Search,
   Settings,
+  Sparkles,
   Sun,
   Upload,
   Vault,
@@ -40,11 +41,12 @@ type MobileNavEntry =
   | { kind: 'todo'; label: string; icon: typeof Vault }
 
 const NAV: MobileNavEntry[] = [
+  { kind: 'view', mode: ViewMode.VaultChat, label: 'Chat',      icon: Sparkles },
   { kind: 'view', mode: ViewMode.Vault,     label: 'Vault',     icon: Vault },
   { kind: 'view', mode: ViewMode.Board,     label: 'Board',     icon: LayoutGrid },
   { kind: 'view', mode: ViewMode.Tasks,     label: 'Tasks',     icon: CheckSquare },
   { kind: 'view', mode: ViewMode.Bookmarks, label: 'Bookmarks', icon: Bookmark },
-  { kind: 'todo',                           label: 'Calendar',  icon: CalendarDays },
+  { kind: 'view', mode: ViewMode.Calendar,  label: 'Calendar',  icon: CalendarDays },
   { kind: 'view', mode: ViewMode.Graph,     label: 'Graph',     icon: GitFork },
   { kind: 'view', mode: ViewMode.Files,     label: 'Files',     icon: Files },
   { kind: 'view', mode: ViewMode.Search,    label: 'Search',    icon: Search },

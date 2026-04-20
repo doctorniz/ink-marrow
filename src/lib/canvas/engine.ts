@@ -30,6 +30,14 @@ export class CanvasEngine {
   private _width = DEFAULT_CANVAS_WIDTH
   private _height = DEFAULT_CANVAS_HEIGHT
   private _background = DEFAULT_BACKGROUND
+  /**
+   * Stable id for this canvas's pixel folder under
+   * `_marrow/_drawings/<assetId>/`. `null` until the file has been loaded
+   * from a v5 JSON that already has one, or until `writeCanvasFile`
+   * mints one on first save. Rename of the `.canvas` file does not
+   * touch this id — it travels with the JSON content, not the filename.
+   */
+  private _assetId: string | null = null
 
   /**
    * Observes the host container and resizes the PixiJS renderer to
@@ -62,6 +70,20 @@ export class CanvasEngine {
 
   set background(color: string) {
     this._background = color
+  }
+
+  get assetId(): string | null {
+    return this._assetId
+  }
+
+  /**
+   * Set the canvas's stable asset id. Called from the load path when a
+   * v5 JSON provides one, and from `writeCanvasFile` when a first-save
+   * needs to mint one. Never rotate or clear this once it's set — every
+   * reference on disk points at the resulting folder.
+   */
+  setAssetId(id: string): void {
+    this._assetId = id
   }
 
   setDimensions(w: number, h: number): void {

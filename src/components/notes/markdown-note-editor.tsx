@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { Editor } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useVaultSession } from '@/contexts/vault-fs-context'
@@ -45,21 +53,29 @@ function sanitizeTitle(raw: string): string {
     .trim()
 }
 
-export function MarkdownNoteEditor({
-  tabId,
-  path,
-  markdownPaths,
-  onOpenNotePath,
-  onPersisted,
-  onRenamed,
-}: {
-  tabId: string
-  path: string
-  markdownPaths: string[]
-  onOpenNotePath: (path: string) => void
-  onPersisted?: () => void
-  onRenamed?: () => void
-}) {
+export interface MarkdownNoteEditorHandle {
+  /**
+   * Returns the document's `chatAssetId`, minting a new UUID into the
+   * in-memory frontmatter and scheduling a save if one wasn't already
+   * present. Used by the chat panel to find its sidecar folder.
+   */
+  ensureChatAssetId: () => string
+}
+
+export const MarkdownNoteEditor = forwardRef<
+  MarkdownNoteEditorHandle,
+  {
+    tabId: string
+    path: string
+    markdownPaths: string[]
+    onOpenNotePath: (path: string) => void
+    onPersisted?: () => void
+    onRenamed?: () => void
+  }
+>(function MarkdownNoteEditor(
+  { tabId, path, markdownPaths, onOpenNotePath, onPersisted, onRenamed },
+  ref,
+) {
   const { vaultFs } = useVaultSession()
   const syncPush = useSyncPush()
   const markDirty = useEditorStore((s) => s.markDirty)
@@ -104,6 +120,13 @@ export function MarkdownNoteEditor({
   const editorRef = useRef<Editor | null>(null)
   const loadingRef = useRef(true)
   const frontmatterRef = useRef<NoteFrontmatter>({})
+  /**
+   * Holds a `chatAssetId` minted before the on-disk frontmatter has
+   * finished loading. The bootstrap effect merges it into
+   * `frontmatterRef.current` once the disk state is available so the
+   * next save carries the id to disk.
+   */
+  const pendingChatAssetIdRef = useRef<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tabIdRef = useRef(tabId)
   const showRawRef = useRef(showRawSource)
@@ -219,6 +242,39 @@ export function MarkdownNoteEditor({
     editorRef.current = editor
   }, [editor])
 
+  // Imperative handle for the chat panel: mint `chatAssetId` on demand
+  // and schedule a save so the UUID lands in frontmatter on disk. Minting
+  // is one-shot — subsequent calls return the same id that's already in
+  // `frontmatterRef.current`.
+  useImperativeHandle(
+    ref,
+    () => ({
+      ensureChatAssetId: () => {
+        const existing = frontmatterRef.current.chatAssetId
+        if (typeof existing === 'string' && existing.length > 0) {
+          return existing
+        }
+        if (pendingChatAssetIdRef.current) return pendingChatAssetIdRef.current
+
+        const id = crypto.randomUUID()
+        if (loadingRef.current) {
+          // Bootstrap hasn't loaded the on-disk frontmatter yet — stash
+          // the id; the load effect will merge it on completion.
+          pendingChatAssetIdRef.current = id
+          return id
+        }
+        frontmatterRef.current = {
+          ...frontmatterRef.current,
+          chatAssetId: id,
+        }
+        markDirty(tabIdRef.current, true)
+        scheduleSaveRef.current()
+        return id
+      },
+    }),
+    [markDirty],
+  )
+
   useEffect(() => {
     if (!editor) return
     editor.setEditable(!showRawSource)
@@ -235,6 +291,17 @@ export function MarkdownNoteEditor({
         const fileRaw = await vaultFs.readTextFile(path)
         if (cancelled) return
         const doc = parseNote(path, fileRaw)
+        // If chat minted an id while we were loading, merge it in now
+        // and schedule a save so the id lands on disk.
+        if (
+          pendingChatAssetIdRef.current &&
+          !doc.frontmatter.chatAssetId
+        ) {
+          doc.frontmatter.chatAssetId = pendingChatAssetIdRef.current
+          markDirty(tabIdRef.current, true)
+          scheduleSaveRef.current()
+        }
+        pendingChatAssetIdRef.current = null
         frontmatterRef.current = doc.frontmatter
         const title =
           (typeof doc.frontmatter.title === 'string' && doc.frontmatter.title) ||
@@ -545,4 +612,4 @@ export function MarkdownNoteEditor({
       </div>
     </div>
   )
-}
+})

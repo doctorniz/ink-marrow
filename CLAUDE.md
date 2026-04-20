@@ -56,7 +56,8 @@ my-vault/
 │   ├── search-index.json
 │   ├── snapshots/    # Pre-edit PDF backups
 │   ├── signatures/
-│   └── templates/
+│   ├── templates/
+│   └── _drawings/    # Canvas pixel folders, keyed by assetId (one per .canvas)
 ├── _inbox/           # PDF import zone — visible in UI
 ├── _board/           # Board thoughts — hidden from tree/browser/search
 │   └── _assets/      # Board image attachments
@@ -89,9 +90,9 @@ const useMyStore = create<MyState>()(
 
 **PDF** — PDF.js renders pages to `<canvas>`; Fabric.js overlay handles annotations (highlight, ink, text, comment, signature). Annotations are written destructively into PDF bytes via `pdf-lib` (no sidecar). Tools: Select / Highlight / Draw / Text / Comment / Sign — each with separate color state (`highlightColor`, `drawColor`, `textColor`). Auto-save via `VaultConfig.autoSave` (default 5s interval + optional blur; no dedicated Save button). `PdfUndoStack` stores up to 20 pre-operation raw PDF byte snapshots. On first edit, a snapshot is created in `_marrow/snapshots/`. Side column: Pages tab (thumbnails, drag-to-reorder, multi-select extract) + Outline tab. Page operations: insert, delete, rotate, merge, split — all via `lib/pdf/page-operations.ts`. Form filling via `PdfFormDialog`. Find-in-document via `search-pdf-text.ts`. Pen paths flattened via `fabric-path-to-pdf-points.ts`. Text comments written as native `/Text` annotations with `InkMarrow` marker for idempotent saves.
 
-**Canvas** — PixiJS v8 (WebGL) raster-first, layer-based drawing surface (`.canvas` v4 sidecar-PNG format; v2/v3 files are migrated on first save). 3-column layout: vertical tool strip (48px left), PixiJS canvas (center, infinite pan/zoom 0.1×–10×), properties panel (260px right — Color/Brush/Layers). Each layer is a `RenderTexture` displayed as a `Sprite` inside a viewport `Container`. Brush pipeline: `stroke-engine.ts` collects pointer samples, interpolates with Catmull-Rom, and passes stamps to `brush-system.ts` which renders into a scratchpad RT with pressure and optional soft-falloff. Eraser strokes skip the scratchpad and render directly into the active layer with PixiJS `erase` blend. Layers support opacity, visibility, lock, and 15 blend modes (some HSL modes may fall back to `normal` — see BUG-16). Stroke undo via PNG `Blob` snapshots (off-heap). Remove-layer / reorder-layers undo via full-metadata entries. Pressure sensitivity via Pointer Events API. Tools: Brush (B), Eraser (E), Pan (H), Fill (G), Eyedropper (I). Default canvas background is white. Keyboard: `B`/`E`/`H`/`G`/`I` tool switch, `[`/`]` brush or eraser size, Ctrl+Z undo / Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S force-save. Auto-save ~3s + saveOnBlur + flush before unmount. Export PNG/PDF.
+**Canvas** — PixiJS v8 (WebGL) raster-first, layer-based drawing surface (`.canvas` v5 drawings-folder format; v2/v3/v4 files are migrated on first save). 3-column layout: vertical tool strip (48px left), PixiJS canvas (center, infinite pan/zoom 0.1×–10×), properties panel (260px right — Color/Brush/Layers). Each layer is a `RenderTexture` displayed as a `Sprite` inside a viewport `Container`. Brush pipeline: `stroke-engine.ts` collects pointer samples, interpolates with Catmull-Rom, and passes stamps to `brush-system.ts` which renders into a scratchpad RT with pressure and optional soft-falloff. Eraser strokes skip the scratchpad and render directly into the active layer with PixiJS `erase` blend. Layers support opacity, visibility, lock, and 15 blend modes (some HSL modes may fall back to `normal` — see BUG-16). Stroke undo via PNG `Blob` snapshots (off-heap). Remove-layer / reorder-layers undo via full-metadata entries. Pressure sensitivity via Pointer Events API. Tools: Brush (B), Eraser (E), Pan (H), Fill (G), Eyedropper (I). Default canvas background is white. Keyboard: `B`/`E`/`H`/`G`/`I` tool switch, `[`/`]` brush or eraser size, Ctrl+Z undo / Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S force-save. Auto-save ~3s + saveOnBlur + flush before unmount. Export PNG/PDF.
 
-**On-disk format (v4):** `<basename>.canvas` is a small metadata JSON; per-layer pixel PNGs live at `<basename>.canvas.assets/<layerId>.png`. Save order is PNGs-first, JSON-last so a crash mid-save never leaves the JSON pointing at unwritten PNGs. Deleted layers leave orphan PNGs on disk — same policy as `_marrow/snapshots/`, to be reaped by a future vault cleanup pass.
+**On-disk format (v5):** `<basename>.canvas` is a small metadata JSON carrying a stable `assetId` UUID. Per-layer pixel PNGs live in a hidden folder at `_marrow/_drawings/<assetId>/<layerId>.png`, not next to the `.canvas` file. Save order is PNGs-first, JSON-last so a crash mid-save never leaves the JSON pointing at unwritten PNGs. **Renaming the `.canvas` file does NOT rename its drawings folder** — the `assetId` is stored in the JSON, so the reference travels with the file contents, not the filename. Deleted layers leave orphan PNGs inside the drawings folder, and v4 → v5 migration leaves the old `<basename>.canvas.assets/` sibling folder behind as dead weight — same orphan policy as `_marrow/snapshots/`, to be reaped by a future vault cleanup pass.
 
 #### Canvas Lifecycle (Critical)
 
@@ -107,9 +108,11 @@ The PixiJS canvas editor has an async init + async flush-save teardown. Key inva
 
 5. **Unmount saves to `pathRef.current`** — not the closure's `path`. After a rename, the closure still holds the old path; saving to it would recreate the old file as a duplicate.
 
-6. **Pixi v8 texture loading** — `Texture.from(string)` is a cache-alias lookup, not image decoding. For inline base64 PNGs (v3 load path) we decode via `HTMLImageElement + img.decode()` then `Texture.from({ resource: img })`. For sidecar PNG bytes (v4 load path) we decode via `createImageBitmap(blob)` then `Texture.from({ resource: bitmap })` — faster and off-main-thread where supported. In both cases the texture takes ownership of the resource; don't `.close()` the bitmap manually.
+6. **Pixi v8 texture loading** — `Texture.from(string)` is a cache-alias lookup, not image decoding. For inline base64 PNGs (v3 load path) we decode via `HTMLImageElement + img.decode()` then `Texture.from({ resource: img })`. For PNG bytes from disk (v4 `<path>.assets/` fallback or v5 `_marrow/_drawings/<assetId>/`) we decode via `createImageBitmap(blob)` then `Texture.from({ resource: bitmap })` — faster and off-main-thread where supported. In both cases the texture takes ownership of the resource; don't `.close()` the bitmap manually.
 
-7. **Sidecar PNG read failures fail soft** — a missing / undecodable `<basename>.canvas.assets/<layerId>.png` during `readCanvasFile` makes that one layer load blank rather than failing the whole canvas. Corrupted / partial-sync vaults can still be opened and recovered by a save.
+7. **Pixel PNG read failures fail soft** — a missing / undecodable `_marrow/_drawings/<assetId>/<layerId>.png` (v5) or `<basename>.canvas.assets/<layerId>.png` (v4) during `readCanvasFile` makes that one layer load blank rather than failing the whole canvas. Corrupted / partial-sync vaults can still be opened and recovered by a save.
+
+8. **`assetId` is immutable once set** — v5 canvases embed a stable `assetId` UUID in their JSON; the engine mints one lazily on first save if absent. `engine.setAssetId()` is only called from (a) the load path when a v5 JSON already has one, or (b) `writeCanvasFile` when first-minting. Never rotate or clear the id — every PNG reference on disk points at the resulting folder, and the folder is intentionally not relocated when the `.canvas` file is renamed.
 
 ### Board
 
@@ -131,12 +134,36 @@ Local-first event calendar (`Ctrl+5`). Events are `.md` files in `_calendar/` (h
 
 Markdown-based Kanban boards. A `.md` file with `type: kanban` in frontmatter renders as a drag-and-drop board. Columns = `## Headings` (optional `<!--kanban:color-->` for accent), cards = `- [ ]`/`- [x]` items. Drag cards by grip handle; drag columns by header grip. `detectEditorTabType` in `lib/notes/editor-tab-from-path.ts` peeks at frontmatter; `notes-view.tsx` renders `KanbanEditor`. Auto-save debounced ~750ms. `lib/kanban/index.ts` parse/serialize. The file is a regular `.md` — searchable, syncable, readable externally.
 
+### Chat
+
+Two BYO-LLM chat surfaces share the same provider stack, thread storage format, and settings:
+
+1. **Per-document chat (tier 0)** — a collapsible panel embedded in the editor column for markdown notes and PDFs. Answers are grounded in the *open* file only. Toggled with the ✨ button at the top-right of the editor.
+2. **Whole-vault chat (tier 1, `ViewMode.VaultChat`)** — a full-viewport surface reachable from the top of the left nav (Ctrl+0). Answers are grounded in a RAG pass over the whole vault (see RAG below).
+
+**Per-document layout** — chat shares a single resizable right-side column with the backlinks section (markdown only). `EditorRightColumn` wraps both surfaces and renders the chat above a collapsible `BacklinksSection`; collapsing backlinks lets chat rise to fill the column. PDFs use the same column without backlinks. Width is persisted per surface (`ink-marrow:right-panel-width:md`, `...:pdf`) so markdown and PDF remember distinct widths.
+
+**Vault chat layout** — full-viewport two-pane view: thread list sidebar (left) + messages pane and composer (right). Thread switcher always visible, unlike the per-doc panel's compact top bar.
+
+**Storage** — threads live as sidecar JSON at `_marrow/_chats/<chatAssetId>/<threadId>.json`, mirroring the canvas v5 `_drawings/<assetId>/` pattern. `_marrow/_chats/` inherits `tree-filter.ts`'s hidden-folder rules so threads never show up in Vault/Files/Search/Graph. Writes use temp-file + rename for crash safety. Vault-wide threads use the reserved sentinel `chatAssetId = '_vault'` (documents mint UUIDs, which can never collide).
+
+**Asset-id resolution (per-document)** — markdown notes stash `chatAssetId: <uuid>` in frontmatter (minted lazily on first chat open; travels with the file on rename). PDFs have no frontmatter, so their id lives in a path-keyed index at `_marrow/_chats/index.json` (`{ schemaVersion: 1, entries: { "<vault/path>": "<uuid>" } }`) — see `src/lib/chat/asset-index.ts`. Trade-off: an out-of-band OS-level rename while the app is closed drops the PDF→id association. In-app renames should call `movePdfChatAssetId` to keep the mapping in sync.
+
+**Provider abstraction** — `src/lib/chat/providers/types.ts` defines `ChatProvider` with an `AsyncIterable<ChatStreamChunk>` streamer. Eight providers are wired: `openrouter`, `openai`, `anthropic`, `gemini`, `huggingface`, `ollama`, `window-ai`, `webllm`. OpenRouter/OpenAI/HuggingFace/Ollama share the OpenAI-compatible `/v1/chat/completions` SSE path (Ollama sends no auth header by default, and points at `http://localhost:11434/v1`); Anthropic uses its native `messages` SSE (named events, `content_block_delta`, `anthropic-dangerous-direct-browser-access`); Gemini uses `streamGenerateContent?alt=sse` with `systemInstruction` top-level and `role: 'model'`. `window-ai` wraps Chrome's built-in Prompt API (`window.LanguageModel` / `window.ai.languageModel`), diffing cumulative text into deltas. `webllm` dynamically imports `@mlc-ai/web-llm`, caches engines per model id, and emits `ink:webllm-progress` CustomEvents while downloading weights — default model `gemma-3-4b-it-q4f16_1-MLC`. Cloud providers need a key; the three local providers do not. API keys live in IndexedDB (`mentis-llm-keys`, keyed `llm:<provider>:<vaultId>`) via `src/lib/chat/key-store.ts`. Provider/model/baseUrl/systemPrompt/maxContextChars live in `VaultConfig.chat` (so they sync via Dropbox); keys never do.
+
+**Context**
+- Per-document: `src/lib/chat/context-builder.ts` reads the open file (MD body or PDF extracted text via `extractPdfText`) and caps to `settings.maxContextChars` (default 40 000 chars) with an explanatory truncation footer.
+- Vault-wide (RAG v1): `src/lib/chat/vault-rag.ts` runs the user's prompt through the existing MiniSearch index (`src/lib/search/index.ts`), takes the top-K hits (default 6), and pulls an excerpt around the first matched term for each. Falls back to re-extracting from disk when the indexed content is empty. System prompt instructs the model to cite sources as backticked paths so the UI can render clickable chips. Embeddings-based RAG is deferred to tier 2 — see `docs/LAUNCH_DEFERRALS.md`.
+
+**Store/UI** — two Zustand+Immer stores: `src/stores/chat.ts` (per-document) and `src/stores/vault-chat.ts` (vault-wide). Both own streaming accumulation, AbortController cancellation, and once-per-turn persistence. `src/components/chat/chat-panel.tsx` renders the per-document panel; `src/components/views/vault-chat-view.tsx` renders the vault-wide view. Shared primitives: `ChatInput`, `ChatMessage`, `renderChatMarkdown`. The vault view adds a Sources-chip strip below each assistant message that parses backticked paths out of the model's response and opens them in the Vault view on click.
+
 ### Routing / Views
 
 Next.js App Router, but the app is a single-page shell. Navigation is state-driven via `useUiStore` (`activeView`). `app/page.tsx` renders `<AppRoot>` which switches between views via `ViewRouter`.
 
-Nav order (sidebar): **Vault** (Ctrl+1) → **Board** (Ctrl+2) → **Tasks** (Ctrl+3) → **Bookmarks** (Ctrl+4) → **Calendar** (Ctrl+5) → **Graph** (Ctrl+6) → **Files** (Ctrl+7) → **Search** (Ctrl+8 / Ctrl+F) → New (Ctrl+N).
+Nav order (sidebar): **Chat** (Ctrl+0) → **Vault** (Ctrl+1) → **Board** (Ctrl+2) → **Tasks** (Ctrl+3) → **Bookmarks** (Ctrl+4) → **Calendar** (Ctrl+5) → **Graph** (Ctrl+6) → **Files** (Ctrl+7) → **Search** (Ctrl+8 / Ctrl+F) → New (Ctrl+N).
 
+- **Chat** (`ViewMode.VaultChat`) = full-viewport whole-vault chat; see "Chat" section above.
 - **Vault** (`ViewMode.Vault`) = file tree + editor (markdown, PDF, canvas, image).
 - **Files** (`ViewMode.Files`) = `FileBrowserView` with `showHidden=true`; power-user raw view.
 - **Mobile (≤767px)**: `MobileNavMasthead` with hamburger → left sheet. `MOBILE_NAV_MEDIA_QUERY` in `lib/browser/breakpoints.ts`.
@@ -196,7 +223,7 @@ Key suites: `search.test.ts`, `markdown.test.ts`, `markdown-bridge.test.ts`, `pd
 - **Static export:** `pnpm build` uses `output: 'export'`. No server-side rendering, no API routes (except auth pages which are handled client-side).
 - **Canvas Pixi ticker:** The Pixi Application ticker must be stopped synchronously before async teardown in canvas cleanup, or it renders destroyed geometry. See "Canvas Lifecycle" section above.
 - **Canvas unmount save race:** Unmount cleanup awaits `flushSave` before `engine.destroy()`, and publishes the promise into `pendingCanvasSaves` so the next mount of the same path can await it before reading disk. Skipping either half loses in-flight changes.
-- **Canvas v4 sidecar PNGs:** Pixel data lives at `<basename>.canvas.assets/<layerId>.png`, not inline in JSON. Save order is PNGs-first, JSON-last for crash safety; deleted layers leave orphan PNGs (out of scope for now).
+- **Canvas v5 drawings folder:** Pixel data lives at `_marrow/_drawings/<assetId>/<layerId>.png`, hidden from the vault tree. `assetId` is stored in the `.canvas` JSON and is minted on first save if missing (v3 / v4 migrations). Save order is PNGs-first, JSON-last for crash safety. Renaming a `.canvas` file does NOT move its drawings folder — the id travels with the JSON, not the filename. Deleted layers and v4-migration sibling `.assets/` folders leave orphans (out of scope for now).
 - **PDF annotation persistence:** After auto-save, the viewer reloads file bytes so the raster layer matches disk. `addAnnotation(..., { fromLoader: true })` when hydrating from disk avoids false unsaved/autosave loops. `annotation-writer` draws highlights/ink/FreeText/stamps into page content; text comments as native `/Text` annotations.
 - **PDF page add:** `appendBlankPage` uses `getPageCount()` on current bytes (not stale React `pages.length`).
 - **Vault rename collision:** `vaultPathsPointToSameFile` (`lib/fs/vault-path-equiv.ts`) prevents false "already exists" errors on case-only renames.
