@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { Editor } from '@tiptap/core'
+import type { Editor, JSONContent } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useVaultSession } from '@/contexts/vault-fs-context'
 import { getNoteEditorExtensions } from '@/lib/editor/tiptap-extensions'
