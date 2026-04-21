@@ -2,7 +2,7 @@ import matter from 'gray-matter'
 import type { TaskItem, TaskFrontmatter, TaskPriority, TaskStatus } from '@/types/tasks'
 import { getEffectiveDueDate, parseLocalDate, startOfLocalDay } from '@/lib/tasks/recurrence'
 
-export const TASKS_DIR = '_tasks'
+export const TASKS_DIR = '_marrow/_tasks'
 
 const H1_RE = /^#\s+(.+)$/m
 

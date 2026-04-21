@@ -5,7 +5,7 @@ import type {
   CalendarEventColor,
 } from '@/types/calendar'
 
-export const CALENDAR_DIR = '_calendar'
+export const CALENDAR_DIR = '_marrow/_calendar'
 
 const H1_RE = /^#\s+(.+)$/m
 

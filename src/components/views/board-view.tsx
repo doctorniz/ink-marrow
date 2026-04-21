@@ -86,7 +86,7 @@ export function BoardView() {
     async (file: File) => {
       const exists = await vaultFs.exists(BOARD_ASSETS_DIR)
       if (!exists) {
-        await vaultFs.mkdir('_board/_assets')
+        await vaultFs.mkdir(BOARD_ASSETS_DIR)
       }
 
       const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'

@@ -17,7 +17,8 @@ import {
 import { ChatInput } from '@/components/chat/chat-input'
 import { ChatMessage } from '@/components/chat/chat-message'
 import { useVaultSession } from '@/contexts/vault-fs-context'
-import { getChatKey } from '@/lib/chat/key-store'
+import { getChatKey, CHAT_KEY_CHANGED_EVENT } from '@/lib/chat/key-store'
+import { providerNeedsApiKey } from '@/lib/chat/providers/model-catalog'
 import {
   useVaultChatStore,
   selectActiveVaultThread,
@@ -73,12 +74,28 @@ export function VaultChatView() {
     void init({ vaultFs })
   }, [vaultFs, init])
 
-  // Pull the API key for the configured provider; recheck when provider/vault changes.
+  // Listen for key-changed signal from settings so the view re-reads without refresh.
+  const [keyVersion, setKeyVersion] = useState(0)
+
+  useEffect(() => {
+    const handler = () => setKeyVersion((v) => v + 1)
+    window.addEventListener(CHAT_KEY_CHANGED_EVENT, handler)
+    return () => window.removeEventListener(CHAT_KEY_CHANGED_EVENT, handler)
+  }, [])
+
+  // Pull the API key for the configured provider; recheck when provider/vault changes
+  // or when the key-changed signal fires.
   useEffect(() => {
     let cancelled = false
     setKeyChecked(false)
     if (!settings.provider) {
       setApiKey(null)
+      setKeyChecked(true)
+      return
+    }
+    // Local/browser providers don't need a real key
+    if (!providerNeedsApiKey(settings.provider)) {
+      setApiKey('__local__')
       setKeyChecked(true)
       return
     }
@@ -96,7 +113,7 @@ export function VaultChatView() {
     return () => {
       cancelled = true
     }
-  }, [settings.provider, vaultPath])
+  }, [settings.provider, vaultPath, keyVersion])
 
   // Autoscroll to bottom as messages stream in.
   useEffect(() => {

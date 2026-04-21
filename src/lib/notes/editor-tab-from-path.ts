@@ -13,6 +13,8 @@ export function editorTabTypeFromVaultPath(path: string): EditorTab['type'] {
       return 'canvas'
     case FileType.Image:
       return 'image'
+    case FileType.Code:
+      return 'code'
     default:
       return 'markdown'
   }
@@ -39,7 +41,11 @@ export async function detectEditorTabType(
   return 'markdown'
 }
 
-/** Display title: filename without extension. */
+/** Display title: filename without extension (or with extension for code files). */
 export function titleFromVaultPath(path: string): string {
+  const name = path.split('/').pop() ?? path
+  const ft = getFileType(name)
+  // Keep the extension visible for code files
+  if (ft === FileType.Code) return name
   return path.replace(/\.[^/.]+$/i, '').split('/').pop() ?? path
 }

@@ -198,7 +198,9 @@ export const useChatStore = create<ChatState>()(
         })
         return
       }
-      if (!apiKey) {
+      // Local providers (webllm, window-ai, ollama) don't require a real key
+      const LOCAL_PROVIDERS = ['webllm', 'window-ai', 'ollama']
+      if (!apiKey && !LOCAL_PROVIDERS.includes(settings.provider!)) {
         set((s) => {
           s.error = 'Add an API key in Settings → AI to start chatting.'
         })

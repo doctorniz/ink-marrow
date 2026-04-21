@@ -10,7 +10,8 @@ import {
 import { Plus, Sparkles, Trash2, X } from 'lucide-react'
 
 import { useVaultSession } from '@/contexts/vault-fs-context'
-import { getChatKey } from '@/lib/chat/key-store'
+import { getChatKey, CHAT_KEY_CHANGED_EVENT } from '@/lib/chat/key-store'
+import { providerNeedsApiKey } from '@/lib/chat/providers/model-catalog'
 import { useChatStore, selectActiveThread } from '@/stores/chat'
 import { DEFAULT_CHAT_SETTINGS, type ChatSettings } from '@/types/chat'
 import { cn } from '@/utils/cn'
@@ -66,12 +67,27 @@ export function ChatPanel({
     // on rename is fine because `openDocument` is idempotent.
   }, [vaultFs, chatAssetId, documentPath, openDocument, closeDocument])
 
-  // Pull the API key for the configured provider; recheck when provider changes.
+  // Pull the API key for the configured provider; recheck when provider
+  // changes or when the key-changed signal fires from settings.
+  const [keyVersion, setKeyVersion] = useState(0)
+
+  useEffect(() => {
+    const handler = () => setKeyVersion((v) => v + 1)
+    window.addEventListener(CHAT_KEY_CHANGED_EVENT, handler)
+    return () => window.removeEventListener(CHAT_KEY_CHANGED_EVENT, handler)
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     setKeyChecked(false)
     if (!settings.provider) {
       setApiKey(null)
+      setKeyChecked(true)
+      return
+    }
+    // Providers that don't need keys (webllm, window-ai) get a dummy key
+    if (!providerNeedsApiKey(settings.provider)) {
+      setApiKey('__local__')
       setKeyChecked(true)
       return
     }
@@ -89,7 +105,7 @@ export function ChatPanel({
     return () => {
       cancelled = true
     }
-  }, [settings.provider, vaultPath])
+  }, [settings.provider, vaultPath, keyVersion])
 
   // Autoscroll to bottom on new messages / streaming deltas.
   useEffect(() => {

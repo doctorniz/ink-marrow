@@ -1,8 +1,8 @@
 import matter from 'gray-matter'
 import type { BoardItem, BoardItemFrontmatter, ThoughtColor } from '@/types/board'
 
-export const BOARD_DIR = '_board'
-export const BOARD_ASSETS_DIR = '_board/_assets'
+export const BOARD_DIR = '_marrow/_board'
+export const BOARD_ASSETS_DIR = '_marrow/_board/_assets'
 
 const H1_RE = /^#\s+(.+)$/m
 const IMAGE_RE = /!\[.*?\]\(.+?\)/

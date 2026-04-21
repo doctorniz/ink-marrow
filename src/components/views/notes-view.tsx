@@ -26,6 +26,7 @@ import { ViewMode } from '@/types/vault'
 import { Button } from '@/components/ui/button'
 import { InlineFileTitle } from '@/components/shell/inline-file-title'
 import { ImageEditorView } from '@/components/notes/image-editor-view'
+import { CodeFileEditor } from '@/components/notes/code-file-editor'
 import { MOBILE_NAV_MEDIA_QUERY } from '@/lib/browser/breakpoints'
 import { useMediaQuery } from '@/lib/browser/use-media-query'
 import { createUntitledNote } from '@/lib/notes/new-note'
@@ -481,6 +482,13 @@ function NotesViewInner() {
             onRename={(tabId, oldPath, stem, ext) =>
               void handleRenameVaultFile(tabId, oldPath, stem, ext)
             }
+          />
+        ) : activeTab?.type === 'code' ? (
+          <CodeFileEditor
+            key={activeTab.id}
+            tabId={activeTab.id}
+            path={activeTab.path}
+            onRenamed={vaultChanged}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8">

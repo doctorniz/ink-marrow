@@ -87,3 +87,24 @@ export async function hasChatKey(
   const rec = await getChatKey(provider, vaultId)
   return !!rec?.apiKey
 }
+
+/* ------------------------------------------------------------------ */
+/*  Reactivity signal                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Custom event name dispatched on `window` whenever a chat key is saved
+ * or cleared. Chat panels listen to this to re-read their API key from
+ * IndexedDB without requiring a full page refresh.
+ */
+export const CHAT_KEY_CHANGED_EVENT = 'ink:chat-key-changed'
+
+/** Dispatch the key-changed signal. Called from setChatKey / clearChatKey wrappers. */
+export function notifyChatKeyChanged(): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.dispatchEvent(new CustomEvent(CHAT_KEY_CHANGED_EVENT))
+  } catch {
+    /* swallow — no window in SSR */
+  }
+}

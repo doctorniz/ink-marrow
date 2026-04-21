@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
   ExternalLink,
+  FileCode2,
   FileText,
   Folder,
   FolderPlus,
@@ -527,6 +528,7 @@ function TreeNode({
     const FileIcon =
       entry.type === FileType.Canvas ? Layout
       : entry.type === FileType.Image ? ImageIcon
+      : entry.type === FileType.Code ? FileCode2
       : FileText
 
     function commitInline() {
@@ -603,6 +605,7 @@ function TreeNode({
                   entry.type === FileType.Pdf && 'text-red-400/70',
                   entry.type === FileType.Canvas && 'text-violet-400/70',
                   entry.type === FileType.Image && 'text-emerald-400/70',
+                  entry.type === FileType.Code && 'text-sky-400/70',
                 )}
                 aria-hidden
               />

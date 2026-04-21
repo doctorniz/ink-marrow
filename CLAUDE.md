@@ -57,15 +57,15 @@ my-vault/
 │   ├── snapshots/    # Pre-edit PDF backups
 │   ├── signatures/
 │   ├── templates/
-│   └── _drawings/    # Canvas pixel folders, keyed by assetId (one per .canvas)
+│   ├── _drawings/    # Canvas pixel folders, keyed by assetId (one per .canvas)
+│   ├── _board/       # Board thoughts — hidden from tree/browser/search
+│   │   └── _assets/  # Board image attachments
+│   ├── _bookmarks/   # Web bookmarks — hidden from tree/browser/search
+│   │   └── <category>/  # Category subfolders
+│   ├── _tasks/       # Tasks and lists — hidden from tree/browser/search
+│   │   └── <list>/   # List subfolders
+│   └── _calendar/    # Events — hidden from tree/browser/search; visible in Files
 ├── _inbox/           # PDF import zone — visible in UI
-├── _board/           # Board thoughts — hidden from tree/browser/search
-│   └── _assets/      # Board image attachments
-├── _bookmarks/       # Web bookmarks — hidden from tree/browser/search
-│   └── <category>/   # Category subfolders
-├── _tasks/           # Tasks and lists — hidden from tree/browser/search
-│   └── <list>/       # List subfolders
-├── _calendar/        # Events — hidden from tree/browser/search; visible in Files
 └── **/_assets/       # Per-folder assets — hidden; shown inline in notes
 ```
 
@@ -116,19 +116,19 @@ The PixiJS canvas editor has an async init + async flush-save teardown. Key inva
 
 ### Board
 
-Quick-capture notice board (`Ctrl+2`). **Thoughts** are `.md` files in `_board/` with frontmatter (`type`, `color`, timestamps). Title from first `# H1`. Masonry CSS-columns layout. Inline edit via minimal Tiptap (bold/italic/underline/lists — keyboard shortcuts only). Image thoughts in `_board/_assets/`. `useBoardStore` for CRUD; `lib/board/index.ts` parse/serialize; `lib/editor/board-extensions.ts` extensions.
+Quick-capture notice board (`Ctrl+2`). **Thoughts** are `.md` files in `_marrow/_board/` with frontmatter (`type`, `color`, timestamps). Title from first `# H1`. Masonry CSS-columns layout. Inline edit via minimal Tiptap (bold/italic/underline/lists — keyboard shortcuts only). Image thoughts in `_marrow/_board/_assets/`. `useBoardStore` for CRUD; `lib/board/index.ts` parse/serialize; `lib/editor/board-extensions.ts` extensions.
 
 ### Bookmarks
 
-Web bookmark manager (`Ctrl+4`). `.md` files in `_bookmarks/` with frontmatter (url, title, description, favicon, ogImage, tags). Categories as subfolders. `fetchOgMetadata` in `lib/bookmarks/og-fetch.ts` scrapes OG + Google favicon — CORS-safe fallback. Two-panel layout: category sidebar + bookmark list. Add/edit via Radix Dialog. `useBookmarksStore` for CRUD + categories; `lib/bookmarks/index.ts` parse/serialize.
+Web bookmark manager (`Ctrl+4`). `.md` files in `_marrow/_bookmarks/` with frontmatter (url, title, description, favicon, ogImage, tags). Categories as subfolders. `fetchOgMetadata` in `lib/bookmarks/og-fetch.ts` scrapes OG + Google favicon — CORS-safe fallback. Two-panel layout: category sidebar + bookmark list. Add/edit via Radix Dialog. `useBookmarksStore` for CRUD + categories; `lib/bookmarks/index.ts` parse/serialize.
 
 ### Tasks
 
-CalDAV-compatible local-first task manager (`Ctrl+3`). `.md` files in `_tasks/` with frontmatter mapping to iCalendar VTODO fields (`uid`, `status`, `priority` 1–4, `due`, `created`, `modified`, `completed`, `tags`, `parent`, `order`). Lists are subfolders of `_tasks/`. Subtasks are separate `.md` files linked by `parent` UID in the same folder. Quick-add bar parses natural language: `!1` priority, `#tag` tags, `>tomorrow` / `>YYYY-MM-DD` due dates, phrases like **on Wednesday** (next occurrence) and **every Monday** / **on Wednesdays** (weekly `repeat` + `repeatWeekday`; completing rolls `due` forward). Explicit `>` due wins when both are present. Two-panel layout: sidebar (Inbox/Today/Upcoming smart filters + user lists) + task list. `.ics` export via `lib/tasks/ical.ts`. `useTasksStore` for CRUD; `lib/tasks/index.ts` parse/serialize/tree; `lib/tasks/parse-quick-add.ts` parser.
+CalDAV-compatible local-first task manager (`Ctrl+3`). `.md` files in `_marrow/_tasks/` with frontmatter mapping to iCalendar VTODO fields (`uid`, `status`, `priority` 1–4, `due`, `created`, `modified`, `completed`, `tags`, `parent`, `order`). Lists are subfolders of `_marrow/_tasks/`. Subtasks are separate `.md` files linked by `parent` UID in the same folder. Quick-add bar parses natural language: `!1` priority, `#tag` tags, `>tomorrow` / `>YYYY-MM-DD` due dates, phrases like **on Wednesday** (next occurrence) and **every Monday** / **on Wednesdays** (weekly `repeat` + `repeatWeekday`; completing rolls `due` forward). Explicit `>` due wins when both are present. Two-panel layout: sidebar (Inbox/Today/Upcoming smart filters + user lists) + task list. `.ics` export via `lib/tasks/ical.ts`. `useTasksStore` for CRUD; `lib/tasks/index.ts` parse/serialize/tree; `lib/tasks/parse-quick-add.ts` parser.
 
 ### Calendar
 
-Local-first event calendar (`Ctrl+5`). Events are `.md` files in `_calendar/` (hidden from Vault tree/browser/search; visible in Files). Frontmatter: `uid`, `start` (ISO date or `YYYY-MM-DDTHH:mm`), `end`, `allDay`, `color` (violet/sky/emerald/amber/rose/slate), `created`, `modified`. Monthly grid view; tasks with due dates appear as greyed "task due" chips. `useCalendarStore` for CRUD; `lib/calendar/index.ts` for parse/serialize/date helpers.
+Local-first event calendar (`Ctrl+5`). Events are `.md` files in `_marrow/_calendar/` (hidden from Vault tree/browser/search; visible in Files). Frontmatter: `uid`, `start` (ISO date or `YYYY-MM-DDTHH:mm`), `end`, `allDay`, `color` (violet/sky/emerald/amber/rose/slate), `created`, `modified`. Monthly grid view; tasks with due dates appear as greyed "task due" chips. `useCalendarStore` for CRUD; `lib/calendar/index.ts` for parse/serialize/date helpers.
 
 ### Kanban
 

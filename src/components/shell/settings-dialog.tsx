@@ -19,7 +19,15 @@ import {
   clearChatKey,
   getChatKey,
   setChatKey,
+  notifyChatKeyChanged,
 } from '@/lib/chat/key-store'
+import { testConnection } from '@/lib/chat/providers/test-connection'
+import {
+  fetchModels,
+  providerNeedsApiKey,
+  providerNeedsBaseUrl,
+  type ModelEntry,
+} from '@/lib/chat/providers/model-catalog'
 import {
   DEFAULT_CHAT_SETTINGS,
   type ChatProviderId,
@@ -320,7 +328,7 @@ function CalendarSettingsTab() {
       <SectionHeader>Calendar sync</SectionHeader>
       <p className="text-fg-secondary mb-4 text-xs leading-relaxed">
         Calendar events are stored locally in your vault as markdown files (
-        <code className="bg-bg-tertiary rounded px-1 font-mono text-[10px]">_calendar/</code>).
+        <code className="bg-bg-tertiary rounded px-1 font-mono text-[10px]">_marrow/_calendar/</code>).
         External sync options are coming soon.
       </p>
       <div className="divide-border divide-y">
@@ -385,79 +393,65 @@ interface ProviderOption {
   label: string
   hint: string
   keyPlaceholder: string
-  modelPlaceholder: string
   baseUrlPlaceholder: string
 }
 
-/**
- * Order matters — OpenRouter first (single key covers many models), then
- * the direct providers in a friendly order. `window-ai` and local-browser
- * options are deliberately omitted until they're implemented end-to-end.
- */
 const PROVIDER_OPTIONS: ProviderOption[] = [
   {
     id: 'openrouter',
     label: 'OpenRouter',
     hint: 'One key unlocks Anthropic, OpenAI, Gemini, and many open models.',
     keyPlaceholder: 'sk-or-v1-…',
-    modelPlaceholder: 'anthropic/claude-sonnet-4',
     baseUrlPlaceholder: 'https://openrouter.ai/api/v1',
   },
   {
     id: 'anthropic',
     label: 'Anthropic (direct)',
-    hint: 'Requires a browser-enabled API key. Use an organisation that allows direct browser access.',
+    hint: 'Requires a browser-enabled API key with direct browser access enabled.',
     keyPlaceholder: 'sk-ant-…',
-    modelPlaceholder: 'claude-sonnet-4-20250514',
     baseUrlPlaceholder: 'https://api.anthropic.com/v1',
   },
   {
     id: 'openai',
     label: 'OpenAI (direct)',
-    hint: 'Works with Azure OpenAI, LM Studio, Ollama via a custom base URL.',
+    hint: 'Works with Azure OpenAI, LM Studio via a custom base URL.',
     keyPlaceholder: 'sk-…',
-    modelPlaceholder: 'gpt-4o-mini',
     baseUrlPlaceholder: 'https://api.openai.com/v1',
   },
   {
     id: 'gemini',
     label: 'Google Gemini',
-    hint: 'Get an API key at ai.google.dev. Keys are sent as a query parameter per Google spec.',
+    hint: 'Get an API key at ai.google.dev.',
     keyPlaceholder: 'AIza…',
-    modelPlaceholder: 'gemini-2.5-flash',
     baseUrlPlaceholder: 'https://generativelanguage.googleapis.com/v1beta',
   },
   {
     id: 'huggingface',
     label: 'Hugging Face',
-    hint: 'OpenAI-compatible router at router.huggingface.co. Point the base URL at your Inference Endpoint to self-host.',
+    hint: 'OpenAI-compatible router. Point the base URL at your Inference Endpoint to self-host.',
     keyPlaceholder: 'hf_…',
-    modelPlaceholder: 'meta-llama/Meta-Llama-3-8B-Instruct',
     baseUrlPlaceholder: 'https://router.huggingface.co/v1',
   },
   {
     id: 'ollama',
     label: 'Ollama (local)',
-    hint: 'Run `ollama serve` (or the Ollama desktop app), then pick a pulled model. Leave the API key blank for vanilla local setups.',
-    keyPlaceholder: '(blank for local)',
-    modelPlaceholder: 'llama3.2',
-    baseUrlPlaceholder: 'http://localhost:11434/v1',
+    hint: 'Run `ollama serve` locally. No API key needed.',
+    keyPlaceholder: '(optional)',
+    baseUrlPlaceholder: 'http://localhost:11434',
   },
   {
     id: 'window-ai',
     label: 'Chrome built-in (window.ai)',
-    hint: 'On-device Gemini Nano. Enable chrome://flags/#optimization-guide-on-device-model and restart Chrome. No key, no network.',
-    keyPlaceholder: '(not required)',
-    modelPlaceholder: 'gemini-nano',
-    baseUrlPlaceholder: '(not used)',
+    hint: 'On-device Gemini Nano. Enable chrome://flags/#optimization-guide-on-device-model and restart Chrome.',
+    keyPlaceholder: '',
+    baseUrlPlaceholder: '',
   },
   {
     id: 'webllm',
     label: 'WebLLM (in-browser, WebGPU)',
-    hint: 'Downloads a quantized model into the browser and runs on WebGPU. First load is slow (GB-scale weights); subsequent chats are instant. Requires `pnpm install @mlc-ai/web-llm`.',
-    keyPlaceholder: '(not required)',
-    modelPlaceholder: 'gemma-3-4b-it-q4f16_1-MLC',
-    baseUrlPlaceholder: '(not used)',
+    hint: 'Downloads a quantized model into the browser and runs on WebGPU. First load is slow (GB-scale weights); subsequent chats are instant.',
+    keyPlaceholder: '',
+    baseUrlPlaceholder: '',
   },
 ]
 
@@ -477,8 +471,16 @@ function AiTab({
   const chat = chatDraft(draft)
   const [apiKey, setApiKey] = useState<string>('')
   const [keyStatus, setKeyStatus] = useState<'empty' | 'set' | 'loaded'>('empty')
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
+  const [testError, setTestError] = useState<string>('')
+  const [models, setModels] = useState<ModelEntry[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [webllmLoading, setWebllmLoading] = useState(false)
+  const [webllmLoadError, setWebllmLoadError] = useState<string>('')
 
   const provider = chat.provider
+  const needsKey = provider ? providerNeedsApiKey(provider) : false
+  const needsBaseUrl = provider ? providerNeedsBaseUrl(provider) : false
 
   // Load key from IndexedDB whenever provider changes.
   useEffect(() => {
@@ -486,6 +488,11 @@ function AiTab({
     if (!provider) {
       setApiKey('')
       setKeyStatus('empty')
+      return
+    }
+    if (!needsKey) {
+      setApiKey('')
+      setKeyStatus('loaded')
       return
     }
     void getChatKey(provider, vaultId)
@@ -507,7 +514,39 @@ function AiTab({
     return () => {
       cancelled = true
     }
-  }, [provider, vaultId])
+  }, [provider, vaultId, needsKey])
+
+  // Reset test/models state when provider changes
+  useEffect(() => {
+    setTestStatus('idle')
+    setTestError('')
+    setModels([])
+    setWebllmLoadError('')
+  }, [provider])
+
+  // Auto-fetch models for providers that don't need API keys (webllm, window-ai, ollama)
+  useEffect(() => {
+    if (!provider) return
+    if (needsKey) return
+    let cancelled = false
+    setModelsLoading(true)
+    void fetchModels(provider, '', chat.baseUrl)
+      .then((result) => {
+        if (cancelled) return
+        setModels(result)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setModels([])
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, needsKey])
 
   const setChat = useCallback(
     <K extends keyof ChatSettings>(key: K, value: ChatSettings[K]) => {
@@ -516,25 +555,73 @@ function AiTab({
     [chat, set],
   )
 
-  const handleSaveKey = useCallback(async () => {
+  const handleTest = useCallback(async () => {
     if (!provider) return
-    const trimmed = apiKey.trim()
-    if (!trimmed) {
-      await clearChatKey(provider, vaultId)
-      setKeyStatus('empty')
-      return
+    setTestStatus('testing')
+    setTestError('')
+    const result = await testConnection(provider, apiKey.trim(), chat.baseUrl)
+    if (result.ok) {
+      setTestStatus('success')
+      // On successful test for key-based providers, save the key and fetch models
+      if (needsKey && apiKey.trim()) {
+        await setChatKey(provider, vaultId, { apiKey: apiKey.trim() })
+        setKeyStatus('loaded')
+        notifyChatKeyChanged()
+      }
+      // Fetch models after successful test
+      setModelsLoading(true)
+      try {
+        const fetched = await fetchModels(provider, apiKey.trim(), chat.baseUrl)
+        setModels(fetched)
+      } catch {
+        // Non-fatal — user can still type a model manually
+      } finally {
+        setModelsLoading(false)
+      }
+    } else {
+      setTestStatus('error')
+      setTestError(result.error ?? 'Connection failed')
     }
-    await setChatKey(provider, vaultId, { apiKey: trimmed })
-    setKeyStatus('set')
-    setTimeout(() => setKeyStatus('loaded'), 1500)
-  }, [apiKey, provider, vaultId])
+  }, [provider, apiKey, chat.baseUrl, needsKey, vaultId])
 
   const handleClearKey = useCallback(async () => {
     if (!provider) return
     await clearChatKey(provider, vaultId)
+    notifyChatKeyChanged()
     setApiKey('')
     setKeyStatus('empty')
+    setTestStatus('idle')
+    setModels([])
   }, [provider, vaultId])
+
+  const handleLoadWebLlm = useCallback(async () => {
+    if (!chat.model) return
+    setWebllmLoading(true)
+    setWebllmLoadError('')
+    try {
+      // Import webllm and attempt to load the model (this triggers download)
+      const mod = (await import('@mlc-ai/web-llm')) as unknown as {
+        CreateMLCEngine: (
+          modelId: string,
+          init?: { initProgressCallback?: (p: { progress: number; text: string }) => void },
+        ) => Promise<unknown>
+      }
+      await mod.CreateMLCEngine(chat.model, {
+        initProgressCallback: (p) => {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('ink:webllm-progress', { detail: p }),
+            )
+          }
+        },
+      })
+      setWebllmLoading(false)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setWebllmLoadError(msg)
+      setWebllmLoading(false)
+    }
+  }, [chat.model])
 
   return (
     <div>
@@ -570,26 +657,34 @@ function AiTab({
           const opt = PROVIDER_OPTIONS.find((p) => p.id === provider)
           return (
             <>
-              <Row label="API key" hint={opt?.hint}>
-                <div className="flex w-64 flex-col gap-1.5">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder={opt?.keyPlaceholder ?? 'sk-…'}
-                    className={cn(INPUT_CLS, 'w-full')}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-fg-muted text-[10px]">
-                      {keyStatus === 'loaded'
-                        ? 'Key loaded from browser storage'
-                        : keyStatus === 'set'
-                          ? 'Saved'
+              {opt?.hint && (
+                <div className="py-2">
+                  <p className="text-fg-muted text-xs leading-relaxed">{opt.hint}</p>
+                </div>
+              )}
+
+              {/* API key — only for providers that need one */}
+              {needsKey && (
+                <Row label="API key">
+                  <div className="flex w-64 flex-col gap-1.5">
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => {
+                        setApiKey(e.target.value)
+                        setTestStatus('idle')
+                      }}
+                      placeholder={opt?.keyPlaceholder ?? 'sk-…'}
+                      className={cn(INPUT_CLS, 'w-full')}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-fg-muted text-[10px]">
+                        {keyStatus === 'loaded'
+                          ? 'Key saved'
                           : 'No key saved for this provider'}
-                    </span>
-                    <div className="flex gap-1.5">
+                      </span>
                       {keyStatus === 'loaded' && (
                         <button
                           type="button"
@@ -599,37 +694,136 @@ function AiTab({
                           Clear
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => void handleSaveKey()}
-                        className="bg-accent text-accent-fg hover:bg-accent/90 rounded px-2 py-0.5 text-[11px] font-medium"
-                      >
-                        Save key
-                      </button>
                     </div>
                   </div>
+                </Row>
+              )}
+
+              {/* Base URL — only for providers that use it */}
+              {needsBaseUrl && (
+                <Row label="Base URL (optional)">
+                  <input
+                    value={chat.baseUrl ?? ''}
+                    onChange={(e) =>
+                      setChat('baseUrl', e.target.value || undefined)
+                    }
+                    placeholder={opt?.baseUrlPlaceholder ?? ''}
+                    className={INPUT_CLS}
+                    spellCheck={false}
+                  />
+                </Row>
+              )}
+
+              {/* Test connection button */}
+              <Row label="Connection">
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void handleTest()}
+                    disabled={testStatus === 'testing' || (needsKey && !apiKey.trim())}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                      testStatus === 'success'
+                        ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+                        : testStatus === 'error'
+                          ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                          : 'bg-accent/10 text-accent hover:bg-accent/20',
+                      (testStatus === 'testing' || (needsKey && !apiKey.trim())) &&
+                        'cursor-not-allowed opacity-50',
+                    )}
+                  >
+                    {testStatus === 'testing' && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Loader2 className="size-3 animate-spin" />
+                        Testing…
+                      </span>
+                    )}
+                    {testStatus === 'success' && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Check className="size-3" />
+                        Connected
+                      </span>
+                    )}
+                    {testStatus === 'error' && 'Retry'}
+                    {testStatus === 'idle' && 'Test connection'}
+                  </button>
+                  {testStatus === 'error' && testError && (
+                    <p className="text-danger text-[10px] leading-snug">{testError}</p>
+                  )}
                 </div>
               </Row>
-              <Row label="Default model">
-                <input
-                  value={chat.model}
-                  onChange={(e) => setChat('model', e.target.value)}
-                  placeholder={opt?.modelPlaceholder ?? 'model-id'}
-                  className={INPUT_CLS}
-                  spellCheck={false}
-                />
+
+              {/* Model selection — dropdown populated after test/auto-fetch */}
+              <Row label="Model">
+                <div className="flex w-48 flex-col gap-1.5">
+                  {modelsLoading ? (
+                    <div className="text-fg-muted flex items-center gap-1.5 text-xs">
+                      <Loader2 className="size-3 animate-spin" />
+                      Loading models…
+                    </div>
+                  ) : models.length > 0 ? (
+                    <select
+                      value={chat.model}
+                      onChange={(e) => setChat('model', e.target.value)}
+                      className={cn(INPUT_CLS, 'w-full')}
+                    >
+                      {!models.some((m) => m.id === chat.model) && chat.model && (
+                        <option value={chat.model}>{chat.model}</option>
+                      )}
+                      {models.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={chat.model}
+                      onChange={(e) => setChat('model', e.target.value)}
+                      placeholder="model-id"
+                      className={cn(INPUT_CLS, 'w-full')}
+                      spellCheck={false}
+                    />
+                  )}
+                </div>
               </Row>
-              <Row label="Base URL (optional)">
-                <input
-                  value={chat.baseUrl ?? ''}
-                  onChange={(e) =>
-                    setChat('baseUrl', e.target.value || undefined)
-                  }
-                  placeholder={opt?.baseUrlPlaceholder ?? ''}
-                  className={INPUT_CLS}
-                  spellCheck={false}
-                />
-              </Row>
+
+              {/* WebLLM-specific: Load model button */}
+              {provider === 'webllm' && chat.model && (
+                <Row label="Load model">
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void handleLoadWebLlm()}
+                      disabled={webllmLoading || !chat.model}
+                      className={cn(
+                        'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                        'bg-accent text-accent-fg hover:bg-accent/90',
+                        (webllmLoading || !chat.model) && 'cursor-not-allowed opacity-50',
+                      )}
+                    >
+                      {webllmLoading ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Loader2 className="size-3 animate-spin" />
+                          Loading…
+                        </span>
+                      ) : (
+                        'Load into browser'
+                      )}
+                    </button>
+                    {webllmLoadError && (
+                      <p className="text-danger text-[10px] leading-snug">
+                        {webllmLoadError}
+                      </p>
+                    )}
+                    <p className="text-fg-muted text-[10px]">
+                      Downloads model weights (1–3 GB). Cached after first load.
+                    </p>
+                  </div>
+                </Row>
+              )}
+
+              {/* Context size */}
               <Row
                 label="Context size"
                 hint="Max characters of the open document sent as context."
@@ -642,6 +836,8 @@ function AiTab({
                   onChange={(v) => setChat('maxContextChars', v)}
                 />
               </Row>
+
+              {/* System prompt */}
               <Row label="System prompt override">
                 <textarea
                   value={chat.systemPrompt ?? ''}

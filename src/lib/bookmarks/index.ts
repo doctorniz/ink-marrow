@@ -1,7 +1,7 @@
 import matter from 'gray-matter'
 import type { BookmarkFrontmatter, BookmarkItem } from '@/types/bookmarks'
 
-export const BOOKMARKS_DIR = '_bookmarks'
+export const BOOKMARKS_DIR = '_marrow/_bookmarks'
 
 export function categoryFromPath(path: string): string | null {
   const rel = path.startsWith(BOOKMARKS_DIR + '/')

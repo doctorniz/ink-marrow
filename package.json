@@ -19,6 +19,21 @@
         "git:sync": "git add . && git commit -m 'Added features - Canvas rewrite, introducing DOC/DOCX support' && git push"
     },
     "dependencies": {
+        "@codemirror/autocomplete": "^6.18.0",
+        "@codemirror/commands": "^6.7.0",
+        "@codemirror/lang-css": "^6.3.0",
+        "@codemirror/lang-html": "^6.4.0",
+        "@codemirror/lang-javascript": "^6.2.0",
+        "@codemirror/lang-json": "^6.0.0",
+        "@codemirror/lang-python": "^6.1.0",
+        "@codemirror/lang-sql": "^6.8.0",
+        "@codemirror/lang-xml": "^6.1.0",
+        "@codemirror/lang-yaml": "^6.1.0",
+        "@codemirror/language": "^6.10.0",
+        "@codemirror/search": "^6.5.0",
+        "@codemirror/state": "^6.5.0",
+        "@codemirror/view": "^6.35.0",
+        "@lezer/highlight": "^1.2.3",
         "@mlc-ai/web-llm": "^0.2.82",
         "@radix-ui/react-context-menu": "^2.2.0",
         "@radix-ui/react-dialog": "^1.1.0",
@@ -90,6 +105,5 @@
         "tailwindcss": "^4.0.0",
         "typescript": "^5.7.0",
         "vitest": "^3.0.0"
-    },
-    "packageManager": "pnpm@9.15.0"
+    }
 }
