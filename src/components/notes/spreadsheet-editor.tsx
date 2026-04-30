@@ -326,7 +326,7 @@ export function SpreadsheetEditor({
         tsv: 'text/tab-separated-values',
         ods: 'application/vnd.oasis.opendocument.spreadsheet',
       }
-      const blob = new Blob([bytes], { type: mimeMap[ext] ?? 'application/octet-stream' })
+      const blob = new Blob([bytes as BlobPart], { type: mimeMap[ext] ?? 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url

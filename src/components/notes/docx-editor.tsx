@@ -76,7 +76,7 @@ export function DocxEditorView({
         const buffer = bytes.buffer.slice(
           bytes.byteOffset,
           bytes.byteOffset + bytes.byteLength,
-        )
+        ) as ArrayBuffer
 
         setDocBuffer(buffer)
         setEditorComponent(() => mod.DocxEditor)
@@ -151,7 +151,7 @@ export function DocxEditorView({
   const handleDownload = useCallback(async () => {
     try {
       const bytes = await vaultFs.readFile(pathRef.current)
-      const blob = new Blob([bytes], {
+      const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       })
       const url = URL.createObjectURL(blob)
