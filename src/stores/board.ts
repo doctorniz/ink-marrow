@@ -20,9 +20,10 @@ interface BoardState {
   addThought: (fs: FileSystemAdapter, color?: ThoughtColor) => Promise<BoardItem>
   addAudioThought: (
     fs: FileSystemAdapter,
-    mp3Bytes: Uint8Array,
+    audioBytes: Uint8Array,
     durationMs: number,
     color?: ThoughtColor,
+    mimeType?: string,
   ) => Promise<BoardItem>
   updateItem: (fs: FileSystemAdapter, path: string, body: string) => Promise<void>
   /** Update frontmatter fields on a board item (e.g. transcript). */
@@ -91,17 +92,23 @@ export const useBoardStore = create<BoardState>()(
       return item
     },
 
-    addAudioThought: async (fs, mp3Bytes, durationMs, color) => {
+    addAudioThought: async (fs, audioBytes, durationMs, color, mimeType) => {
       // Ensure assets dir exists
       const assetsExist = await fs.exists(BOARD_ASSETS_DIR)
       if (!assetsExist) await fs.mkdir(BOARD_ASSETS_DIR)
 
-      // Save MP3 to assets
+      // Derive file extension from MIME type (fallback to mp3)
+      const ext = mimeType?.includes('mp4') ? 'mp4'
+        : mimeType?.includes('ogg') ? 'ogg'
+        : mimeType?.includes('webm') ? 'webm'
+        : 'mp3'
+
+      // Save audio to assets
       const ts = Date.now().toString(36)
       const rand = Math.random().toString(36).slice(2, 6)
-      const assetName = `${ts}-${rand}.mp3`
+      const assetName = `${ts}-${rand}.${ext}`
       const audioPath = `${BOARD_ASSETS_DIR}/${assetName}`
-      await fs.writeFile(audioPath, mp3Bytes)
+      await fs.writeFile(audioPath, audioBytes)
 
       // Create board .md file with audio frontmatter
       const boardExists = await fs.exists(BOARD_DIR)

@@ -162,7 +162,7 @@ export function KanbanColumn({
   return (
     <div
       className={cn(
-        'flex h-full w-56 shrink-0 flex-col rounded-xl border',
+        'flex h-full min-h-0 w-56 shrink-0 flex-col rounded-xl border',
         shell,
         dropCardOver && 'ring-accent/50 ring-2',
         dropColOver && 'ring-2 ring-violet-400/60 dark:ring-violet-500/50',

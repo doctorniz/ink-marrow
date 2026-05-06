@@ -36,7 +36,7 @@ import { AudioPlayerView } from '@/components/notes/audio-player-view'
 import { MOBILE_NAV_MEDIA_QUERY, PPTX_COMPACT_MEDIA_QUERY, WIDE_EDITOR_MEDIA_QUERY, CANVAS_TREE_MEDIA_QUERY, CANVAS_SIDEBAR_MEDIA_QUERY } from '@/lib/browser/breakpoints'
 import { useMediaQuery } from '@/lib/browser/use-media-query'
 import { createUntitledNote } from '@/lib/notes/new-note'
-import { detectEditorTabType, editorTabTypeFromVaultPath, titleFromVaultPath } from '@/lib/notes/editor-tab-from-path'
+import { detectEditorTabType, titleFromVaultPath } from '@/lib/notes/editor-tab-from-path'
 import { toast } from '@/stores/toast'
 import { removeSearchDocument } from '@/lib/search/index'
 import { reindexMarkdownPath } from '@/lib/search/build-vault-index'
@@ -507,7 +507,7 @@ function NotesViewInner() {
         </>
       )}
 
-      <div className="bg-bg flex min-w-0 flex-1 flex-col">
+      <div className="bg-bg flex min-h-0 min-w-0 flex-1 flex-col">
         <EditorTabBar />
         {activeTab?.type === 'markdown' ? (
           <div className="relative flex min-h-0 flex-1">

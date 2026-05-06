@@ -130,6 +130,11 @@ export async function readCanvasFile(
   engine.background = parsed.background
   engine.viewportController.setState(parsed.viewport)
 
+  // Restore saved canvas dimensions (may differ from DEFAULT_CANVAS_WIDTH ×
+  // DEFAULT_CANVAS_HEIGHT if the canvas was auto-expanded after first save).
+  // Must happen before loadLayers so RenderTextures are created at the right size.
+  engine.setDimensions(parsed.width, parsed.height)
+
   // v5 — drawings folder under `_marrow/_drawings/<assetId>/`.
   // If the JSON is v5 but somehow lacks a valid `assetId` (hand-edited,
   // truncated file), fall through to the "no bitmaps" path so layers

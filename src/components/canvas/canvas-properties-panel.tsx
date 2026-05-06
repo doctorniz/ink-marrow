@@ -68,8 +68,11 @@ export function CanvasPropertiesPanel({ engineRef, onCollapse }: CanvasPropertie
   //   Eraser     → Size only (color/opacity ignored by the erase blend)
   //   Pan        → no stroke controls; Layers panel still shown below
   //   Fill       → Color + Opacity (no size — fill floods a region)
-  //   Eyedropper → no controls; samples the canvas on click
+  //   Eyedropper → read-only color swatch showing the sampled/active color
   const showColor = activeTool === 'brush' || activeTool === 'fill'
+  // Show a read-only color swatch for tools that don't need the full picker,
+  // so the active color is always visible in the panel.
+  const showColorReadOnly = activeTool === 'eyedropper' || activeTool === 'eraser' || activeTool === 'pan'
   const showSize = activeTool === 'brush' || activeTool === 'eraser'
   const showOpacity = activeTool === 'brush' || activeTool === 'fill'
   // Hardness only makes sense for the normal brush. The eraser uses
@@ -338,6 +341,25 @@ export function CanvasPropertiesPanel({ engineRef, onCollapse }: CanvasPropertie
         )}
       </div>
       <div className="flex flex-col gap-4 overflow-y-auto p-3">
+      {/* ---- Active Color (read-only for eyedropper / eraser / pan) ---- */}
+      {showColorReadOnly && (
+        <section>
+          <h3 className="text-fg-secondary mb-2 text-xs font-semibold uppercase tracking-wider">
+            {activeTool === 'eyedropper' ? 'Sampled Color' : 'Color'}
+          </h3>
+          <div className="flex items-center gap-2.5">
+            <div
+              className="border-border size-8 shrink-0 rounded border shadow-sm"
+              style={{ backgroundColor: brushSettings.color }}
+            />
+            <span className="text-fg font-mono text-xs">{brushSettings.color.toUpperCase()}</span>
+          </div>
+          {activeTool === 'eyedropper' && (
+            <p className="text-fg-muted mt-1.5 text-xs">Click canvas to sample</p>
+          )}
+        </section>
+      )}
+
       {/* ---- Color ---- */}
       {showColor && (
       <section>

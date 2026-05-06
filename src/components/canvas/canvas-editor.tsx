@@ -178,6 +178,19 @@ export function CanvasEditor({ tabId, path, onRename, onPersisted }: CanvasEdito
     return () => {
       signal.cancelled = true
 
+      // Stop the Pixi ticker SYNCHRONOUSLY before any async work begins.
+      // The cleanup kicks off an async `run()` below and returns immediately.
+      // Between this return and when `engine.destroy()` eventually executes,
+      // the browser can fire RAF callbacks — the ticker calls `app.render()`
+      // inside those callbacks, and if `brushSystem`/`layerManager` have
+      // already been torn down (or are mid-teardown) that render throws
+      // "Cannot read properties of null (reading 'geometry')".
+      // Stopping the ticker here closes that window.  `flushSave` uses
+      // `renderer.extract.base64()` directly — it does not need the ticker.
+      if (engine.initialized) {
+        try { engine.app.ticker.stop() } catch { /* ignore */ }
+      }
+
       // Capture everything we need into locals NOW — the store is about
       // to be reset and engineRef.current will be nulled. These locals
       // are what the async run() below will close over.

@@ -64,8 +64,22 @@ export class LayerManager {
   private scratchpadSprite: Sprite
   private scratchpadRT: RenderTexture
 
-  private canvasWidth: number
-  private canvasHeight: number
+  private _canvasWidth: number
+  private _canvasHeight: number
+
+  get canvasWidth(): number { return this._canvasWidth }
+  get canvasHeight(): number { return this._canvasHeight }
+
+  /**
+   * Update the stored canvas dimensions without resizing any existing
+   * RenderTextures. Call this before `loadLayers` when loading a file
+   * whose saved dimensions differ from the defaults (e.g. an auto-expanded
+   * canvas saved at 3072 × 4096).
+   */
+  setCanvasDimensions(w: number, h: number): void {
+    this._canvasWidth = Math.max(1, w)
+    this._canvasHeight = Math.max(1, h)
+  }
 
   constructor(
     app: Application,
@@ -75,13 +89,13 @@ export class LayerManager {
   ) {
     this.app = app
     this.viewport = viewport
-    this.canvasWidth = width
-    this.canvasHeight = height
+    this._canvasWidth = width
+    this._canvasHeight = height
 
     // Create scratchpad
     this.scratchpadRT = RenderTexture.create({
-      width: this.canvasWidth,
-      height: this.canvasHeight,
+      width: this._canvasWidth,
+      height: this._canvasHeight,
     })
     this.scratchpadSprite = new Sprite(this.scratchpadRT)
     this.scratchpadContainer = new Container()
@@ -143,8 +157,8 @@ export class LayerManager {
 
     const id = crypto.randomUUID()
     const rt = RenderTexture.create({
-      width: this.canvasWidth,
-      height: this.canvasHeight,
+      width: this._canvasWidth,
+      height: this._canvasHeight,
     })
     const sprite = new Sprite(rt)
     const container = new Container()
@@ -289,8 +303,8 @@ export class LayerManager {
     }
 
     const rt = RenderTexture.create({
-      width: this.canvasWidth,
-      height: this.canvasHeight,
+      width: this._canvasWidth,
+      height: this._canvasHeight,
     })
     const sprite = new Sprite(rt)
     const container = new Container()
@@ -420,6 +434,53 @@ export class LayerManager {
     empty.destroy()
   }
 
+  /* ---- Canvas expansion ---- */
+
+  /**
+   * Expand all layer RenderTextures and the scratchpad to `newWidth ×
+   * newHeight`. Existing pixel data is preserved — it is copied into the
+   * top-left of each new, larger texture. Any area to the right of or
+   * below the old bounds starts transparent.
+   *
+   * This is called by `CanvasEngine.expandToFit` when a stroke point
+   * lands outside the current canvas bounds. It is safe to call
+   * mid-stroke: the scratchpad's partial stroke data is preserved and
+   * subsequent stamps will land at the correct (expanded) coordinates.
+   *
+   * Dimensions are only ever grown — passing values smaller than the
+   * current size is a no-op.
+   */
+  expandCanvas(newWidth: number, newHeight: number): void {
+    const targetW = Math.max(newWidth, this._canvasWidth)
+    const targetH = Math.max(newHeight, this._canvasHeight)
+    if (targetW === this._canvasWidth && targetH === this._canvasHeight) return
+
+    // Expand each layer RT and copy old pixels into the top-left corner.
+    for (const layer of this.layers) {
+      const newRT = RenderTexture.create({ width: targetW, height: targetH })
+      const copySprite = new Sprite(layer.renderTexture)
+      this.app.renderer.render({ container: copySprite, target: newRT, clear: false })
+      copySprite.destroy()
+      layer.sprite.texture = newRT
+      layer.renderTexture.destroy(true)
+      layer.renderTexture = newRT
+      // Invalidate the base64 cache — it reflects the old (smaller) pixels.
+      layer.lastSavedBase64 = null
+    }
+
+    // Expand the scratchpad RT too, preserving any in-progress stroke data.
+    const newScratchRT = RenderTexture.create({ width: targetW, height: targetH })
+    const scratchCopy = new Sprite(this.scratchpadRT)
+    this.app.renderer.render({ container: scratchCopy, target: newScratchRT, clear: false })
+    scratchCopy.destroy()
+    this.scratchpadSprite.texture = newScratchRT
+    this.scratchpadRT.destroy(true)
+    this.scratchpadRT = newScratchRT
+
+    this._canvasWidth = targetW
+    this._canvasHeight = targetH
+  }
+
   /* ---- Flood fill ---- */
 
   /**
@@ -457,8 +518,8 @@ export class LayerManager {
 
     const px = Math.floor(x)
     const py = Math.floor(y)
-    if (px < 0 || px >= this.canvasWidth) return false
-    if (py < 0 || py >= this.canvasHeight) return false
+    if (px < 0 || px >= this._canvasWidth) return false
+    if (py < 0 || py >= this._canvasHeight) return false
 
     // extract.canvas returns an ICanvas (HTMLCanvas-compatible). We
     // guard against environments where getContext('2d') is null
@@ -530,8 +591,8 @@ export class LayerManager {
   ): { r: number; g: number; b: number } | null {
     const px = Math.floor(x)
     const py = Math.floor(y)
-    if (px < 0 || px >= this.canvasWidth) return null
-    if (py < 0 || py >= this.canvasHeight) return null
+    if (px < 0 || px >= this._canvasWidth) return null
+    if (py < 0 || py >= this._canvasHeight) return null
 
     // Seed the accumulator with the opaque canvas background — any
     // layers above that are transparent at the click point leave this
@@ -742,8 +803,8 @@ export class LayerManager {
 
     for (const ld of layersData) {
       const rt = RenderTexture.create({
-        width: this.canvasWidth,
-        height: this.canvasHeight,
+        width: this._canvasWidth,
+        height: this._canvasHeight,
       })
       const sprite = new Sprite(rt)
       const container = new Container()

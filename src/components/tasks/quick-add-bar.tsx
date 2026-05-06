@@ -46,23 +46,26 @@ export function QuickAddBar() {
       (parsed.repeat === 'weekly' && parsed.repeatWeekday != null))
 
   return (
-    <div className="border-border bg-bg border-b px-4 py-2.5">
-      <div className="flex items-center gap-2">
-        <Plus className="text-fg-muted size-4 shrink-0" />
+    <div className="border-border border-b px-3 py-2.5 sm:px-4">
+      <div className="flex items-center gap-2.5">
+        <Plus className="text-fg-muted/50 size-4 shrink-0" />
         <input
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); void handleSubmit() }
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void handleSubmit()
+            }
           }}
-          placeholder="Add a task… !1 #tag >tomorrow — or “on Wednesday”, “every Monday”"
+          placeholder="Add a task..."
           className="text-fg placeholder:text-fg-muted/40 min-w-0 flex-1 bg-transparent text-sm outline-none"
         />
       </div>
 
       {hasParsedTokens && (
-        <div className="mt-1.5 flex flex-wrap gap-1.5 pl-6">
+        <div className="mt-2 flex flex-wrap gap-1.5 pl-3.5 sm:pl-6">
           {parsed.priority && (
             <span
               className={cn(
@@ -91,7 +94,7 @@ export function QuickAddBar() {
           )}
           {parsed.repeat === 'weekly' && parsed.repeatWeekday != null && (
             <span className="bg-accent/15 text-accent rounded-md px-1.5 py-0.5 text-[10px] font-medium">
-              Weekly · {WEEKDAY_LABEL[parsed.repeatWeekday]}
+              Weekly &middot; {WEEKDAY_LABEL[parsed.repeatWeekday]}
             </span>
           )}
         </div>

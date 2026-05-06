@@ -90,28 +90,67 @@ function searchTopK(query: string, topK: number): RawHit[] {
 }
 
 /**
- * Pick a window around the first occurrence of any query term. This is a
- * cheap "best-region" heuristic that works surprisingly well for the PKM
- * shape of prompts (short, factual) without needing a tokenizer.
+ * Pick the window of `maxChars` that has the highest density of query-term
+ * occurrences. The old approach (first-occurrence) breaks on documents that
+ * list topics near the top (table-of-contents style): the first hit lands
+ * in the TOC rather than the definition, so the model sees the wrong section.
+ *
+ * Algorithm:
+ *  1. Collect every position where any query term occurs.
+ *  2. For each candidate window starting at (pos - 30 % of window), count
+ *     how many term positions fall inside it.
+ *  3. Return the window with the highest count; ties go to the earlier one.
  */
 function extractExcerpt(content: string, terms: string[], maxChars: number): string {
   if (content.length <= maxChars) return content
   const lower = content.toLowerCase()
-  let hitAt = -1
-  for (const term of terms) {
-    const t = term.toLowerCase()
-    const i = lower.indexOf(t)
-    if (i >= 0 && (hitAt === -1 || i < hitAt)) hitAt = i
+  const lowerTerms = terms
+    .map((t) => t.toLowerCase())
+    .filter((t) => t.length > 2) // skip stop-word fragments
+
+  if (lowerTerms.length === 0) return content.slice(0, maxChars)
+
+  // Collect all term hit positions.
+  const allHits: number[] = []
+  for (const term of lowerTerms) {
+    let idx = lower.indexOf(term)
+    while (idx !== -1) {
+      allHits.push(idx)
+      idx = lower.indexOf(term, idx + 1)
+    }
   }
-  if (hitAt < 0) return content.slice(0, maxChars)
-  const half = Math.floor(maxChars / 2)
-  const start = Math.max(0, hitAt - half)
+  if (allHits.length === 0) return content.slice(0, maxChars)
+
+  // Score each candidate window and track the best.
+  const bias = Math.floor(maxChars * 0.3) // anchor each candidate slightly before the hit
+  let bestStart = 0
+  let bestScore = -1
+
+  for (const hit of allHits) {
+    const start = Math.max(0, hit - bias)
+    const end = start + maxChars
+    let score = 0
+    for (const h of allHits) {
+      if (h >= start && h < end) score++
+    }
+    if (score > bestScore) {
+      bestScore = score
+      bestStart = start
+    }
+  }
+
+  const start = bestStart
   const end = Math.min(content.length, start + maxChars)
-  // Expand backwards on word boundary where cheap; keeps snippets readable.
   const leftEllipsis = start > 0 ? '…' : ''
   const rightEllipsis = end < content.length ? '…' : ''
   return `${leftEllipsis}${content.slice(start, end)}${rightEllipsis}`
 }
+
+/**
+ * Exported version of extractExcerpt for use by context-builder when the
+ * document is too long and we need to find the most relevant slice.
+ */
+export { extractExcerpt as extractBestExcerpt }
 
 /**
  * For PDFs the search index holds extracted text already, but older indexes

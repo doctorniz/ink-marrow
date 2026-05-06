@@ -129,8 +129,8 @@ export function BoardView() {
   )
 
   const handleRecordingComplete = useCallback(
-    async (mp3Bytes: Uint8Array, durationMs: number) => {
-      await addAudioThought(vaultFs, mp3Bytes, durationMs)
+    async (audioBytes: Uint8Array, durationMs: number, mimeType: string) => {
+      await addAudioThought(vaultFs, audioBytes, durationMs, undefined, mimeType)
       setIsRecording(false)
     },
     [vaultFs, addAudioThought],
@@ -197,7 +197,7 @@ export function BoardView() {
         {isRecording && (
           <div className="px-4 pt-4">
             <AudioRecorderBar
-              onComplete={(bytes, ms) => void handleRecordingComplete(bytes, ms)}
+              onComplete={(bytes, ms, mime) => void handleRecordingComplete(bytes, ms, mime)}
               onCancel={() => setIsRecording(false)}
             />
           </div>

@@ -241,7 +241,7 @@ export const useChatStore = create<ChatState>()(
       // the user just edited the note.
       let systemMessage: string
       try {
-        const ctx = await buildDocumentContext(vaultFs, documentPath, settings)
+        const ctx = await buildDocumentContext(vaultFs, documentPath, settings, text)
         systemMessage = buildSystemMessage(ctx, settings)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

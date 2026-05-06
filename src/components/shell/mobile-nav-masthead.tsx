@@ -5,33 +5,38 @@ import * as Dialog from '@radix-ui/react-dialog'
 import {
   Bookmark,
   CalendarCheck,
+  Camera,
   ChevronDown,
   Columns3,
-  ChevronRight,
   FileStack,
-  Files,
   FileText,
-  GitFork,
+  Files,
   Layout,
-  LayoutGrid,
-  LogOut,
   Menu,
+  Mic,
   Monitor,
   Moon,
   Plus,
+  LogOut,
   Search,
   Settings,
   Sparkles,
+  StickyNote,
   Sun,
   Upload,
   Vault,
+  LayoutGrid,
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useNewFileActions } from '@/lib/notes/use-new-file-actions'
 import { useUiStore, type ThemeChoice } from '@/stores/ui'
 import { useVaultStore } from '@/stores/vault'
-import { ViewMode } from '@/types/vault'
+import { useVaultSession } from '@/contexts/vault-fs-context'
+import { useEditorStore } from '@/stores/editor'
+import { useFileTreeStore } from '@/stores/file-tree'
+import { ViewMode, DAILY_NOTES_DIR } from '@/types/vault'
+import { openOrCreateDailyNote } from '@/lib/notes/daily-note'
 import { cn } from '@/utils/cn'
 import { MOBILE_NAV_MEDIA_QUERY } from '@/lib/browser/breakpoints'
 
@@ -45,9 +50,7 @@ const NAV: MobileNavEntry[] = [
   { kind: 'view', mode: ViewMode.Board,      label: 'Board',     icon: LayoutGrid },
   { kind: 'view', mode: ViewMode.Organizer,  label: 'Organizer', icon: CalendarCheck },
   { kind: 'view', mode: ViewMode.Bookmarks,  label: 'Bookmarks', icon: Bookmark },
-  { kind: 'view', mode: ViewMode.Graph,      label: 'Graph',     icon: GitFork },
   { kind: 'view', mode: ViewMode.Files,      label: 'Files',     icon: Files },
-  { kind: 'view', mode: ViewMode.Search,     label: 'Search',    icon: Search },
 ]
 
 const THEMES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
@@ -56,17 +59,64 @@ const THEMES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
   { value: 'dark', label: 'Dark', icon: Moon },
 ]
 
-const NEW_SUB_ITEMS: {
-  id: string
-  label: string
-  icon: typeof FileText
-  accent: string
-}[] = [
-  { id: 'note', label: 'Note', icon: FileText, accent: 'text-blue-500' },
-  { id: 'kanban', label: 'Kanban', icon: Columns3, accent: 'text-amber-500' },
-  { id: 'file', label: 'File', icon: Upload, accent: 'text-emerald-500' },
-  { id: 'drawing', label: 'Drawing', icon: Layout, accent: 'text-violet-500' },
-]
+/** Sidebar date pill — opens (or creates) today's daily note on click. */
+function DailyNoteDate({ onClose }: { onClose: () => void }) {
+  const { vaultFs } = useVaultSession()
+  const setActiveView = useUiStore((s) => s.setActiveView)
+  const config = useVaultStore((s) => s.config)
+  const [busy, setBusy] = useState(false)
+
+  const folder = config?.dailyNotesFolder ?? DAILY_NOTES_DIR
+  const enabled = config?.dailyNotesEnabled !== false
+
+  if (!enabled) return null
+
+  const now = new Date()
+  const label = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  })
+
+  async function handleClick() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const path = await openOrCreateDailyNote(vaultFs, now, folder)
+      const { detectEditorTabType, titleFromVaultPath } = await import('@/lib/notes/editor-tab-from-path')
+      const type = await detectEditorTabType(vaultFs, path)
+      useFileTreeStore.getState().setSelectedPath(path)
+      useEditorStore.getState().addRecentFile(path)
+      useEditorStore.getState().openTab({
+        id: crypto.randomUUID(),
+        path,
+        type,
+        title: titleFromVaultPath(path),
+        isDirty: false,
+      })
+      setActiveView(ViewMode.Vault)
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleClick()}
+      disabled={busy}
+      title="Open today's daily note"
+      className={cn(
+        'w-full rounded-lg px-3 py-2 text-center transition-colors',
+        'text-fg-secondary hover:bg-sidebar-hover hover:text-fg',
+        busy && 'opacity-60',
+      )}
+    >
+      <span className="block truncate text-sm font-medium">{label}</span>
+    </button>
+  )
+}
 
 export function MobileNavMasthead({
   onCloseVault,
@@ -84,13 +134,15 @@ export function MobileNavMasthead({
   const setTheme = useUiStore((s) => s.setTheme)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const closeMenu = useCallback(() => {
     setOpen(false)
     setNewExpanded(false)
   }, [])
 
-  const { createNote, createDrawing, createKanban, importFiles, busy } = useNewFileActions(closeMenu)
+  const { createNote, createThought, createDrawing, createKanban, importFiles, busy } =
+    useNewFileActions(closeMenu)
 
   function handleOpenChange(next: boolean) {
     setOpen(next)
@@ -108,12 +160,19 @@ export function MobileNavMasthead({
     return () => window.removeEventListener('ink:open-new-popover', onOpenNewPopover)
   }, [])
 
-  function handleSubItemClick(id: string) {
-    if (id === 'note') void createNote()
-    else if (id === 'kanban') void createKanban()
-    else if (id === 'drawing') void createDrawing()
-    else if (id === 'file') fileInputRef.current?.click()
-  }
+  const NEW_ITEMS: { label: string; icon: typeof FileText; accent: string; action: () => void }[] = [
+    { label: 'Note',      icon: FileText,   accent: 'text-blue-500',    action: () => void createNote() },
+    { label: 'Thought',   icon: StickyNote, accent: 'text-yellow-500',  action: () => void createThought() },
+    { label: 'Canvas',    icon: Layout,     accent: 'text-violet-500',  action: () => void createDrawing() },
+    { label: 'Kanban',    icon: Columns3,   accent: 'text-amber-500',   action: () => void createKanban() },
+    { label: 'Recording', icon: Mic,        accent: 'text-red-500',     action: () => {
+      useUiStore.getState().setActiveView(ViewMode.Board)
+      setTimeout(() => window.dispatchEvent(new CustomEvent('ink:board-start-recording')), 100)
+      closeMenu()
+    }},
+    { label: 'Photo',     icon: Camera,     accent: 'text-sky-500',     action: () => photoInputRef.current?.click() },
+    { label: 'File',      icon: Upload,     accent: 'text-emerald-500', action: () => fileInputRef.current?.click() },
+  ]
 
   return (
     <header className="border-border bg-bg flex shrink-0 items-center gap-2 border-b px-2 py-2 md:hidden">
@@ -158,49 +217,7 @@ export function MobileNavMasthead({
             </div>
 
             <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2" aria-label="Main views">
-              {/* New — inline accordion */}
-              <button
-                type="button"
-                onClick={() => setNewExpanded((e) => !e)}
-                className="text-fg-secondary hover:bg-sidebar-hover hover:text-fg flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors"
-              >
-                <Plus className="size-5 shrink-0 opacity-90" aria-hidden />
-                <span className="flex-1 truncate">New</span>
-                {newExpanded ? (
-                  <ChevronDown className="text-fg-muted size-4 shrink-0" aria-hidden />
-                ) : (
-                  <ChevronRight className="text-fg-muted size-4 shrink-0" aria-hidden />
-                )}
-              </button>
-              {newExpanded && (
-                <div className="flex flex-col gap-0.5">
-                  {NEW_SUB_ITEMS.map(({ id, label, icon: Icon, accent }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => handleSubItemClick(id)}
-                      className="text-fg-secondary hover:bg-sidebar-hover hover:text-fg flex w-full items-center gap-3 rounded-lg py-1.5 pl-10 pr-3 text-left text-sm transition-colors disabled:opacity-50"
-                    >
-                      <div className={cn('flex size-6 shrink-0 items-center justify-center rounded-md', accent)}>
-                        <Icon className="size-3.5" />
-                      </div>
-                      <span className="truncate">{label}</span>
-                    </button>
-                  ))}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    aria-label="Choose files to import"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files) void importFiles(e.target.files)
-                      e.target.value = ''
-                    }}
-                  />
-                </div>
-              )}
+              <DailyNoteDate onClose={closeMenu} />
 
               {NAV.map((entry) => {
                 if (entry.kind === 'todo') {
@@ -243,6 +260,45 @@ export function MobileNavMasthead({
                   </button>
                 )
               })}
+
+              {/* Hidden file inputs */}
+              <input ref={fileInputRef} type="file" multiple className="hidden"
+                onChange={(e) => { if (e.target.files) void importFiles(e.target.files); e.currentTarget.value = '' }} />
+              <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+                onChange={(e) => { if (e.target.files) void importFiles(e.target.files); e.currentTarget.value = '' }} />
+
+              {/* New — inline expand */}
+              <button
+                type="button"
+                onClick={() => setNewExpanded((e) => !e)}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
+                  newExpanded
+                    ? 'bg-accent/10 text-accent'
+                    : 'text-fg-secondary hover:bg-sidebar-hover hover:text-fg',
+                )}
+              >
+                <Plus className={cn('size-5 shrink-0 opacity-90 transition-transform', newExpanded && 'rotate-45')} aria-hidden />
+                <span className="flex-1 truncate">New</span>
+                <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', newExpanded && 'rotate-180')} aria-hidden />
+              </button>
+
+              {newExpanded && (
+                <div className="flex flex-col gap-0.5 pl-3">
+                  {NEW_ITEMS.map(({ label, icon: Icon, accent, action }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      disabled={busy}
+                      onClick={action}
+                      className="text-fg-secondary hover:bg-sidebar-hover hover:text-fg flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-sm font-medium transition-colors disabled:opacity-40"
+                    >
+                      <Icon className={cn('size-4 shrink-0', accent)} aria-hidden />
+                      <span className="truncate">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </nav>
 
             <div className="border-border mt-auto border-t p-2">

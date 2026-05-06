@@ -60,12 +60,12 @@ const CURATED_MODELS: Partial<Record<ChatProviderId, ModelEntry[]>> = {
     { id: 'google/gemma-2-9b-it', label: 'Gemma 2 9B' },
   ],
   webllm: [
-    { id: 'gemma-3-4b-it-q4f16_1-MLC', label: 'Gemma 3 4B' },
-    { id: 'gemma-3-1b-it-q4f16_1-MLC', label: 'Gemma 3 1B' },
     { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 3B' },
+    { id: 'Qwen2.5-3B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 3B' },
     { id: 'Phi-3.5-mini-instruct-q4f16_1-MLC', label: 'Phi-3.5 Mini' },
-    { id: 'Qwen2.5-7B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 7B' },
+    { id: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B' },
     { id: 'SmolLM2-1.7B-Instruct-q4f16_1-MLC', label: 'SmolLM2 1.7B' },
+    { id: 'Qwen2.5-7B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 7B' },
   ],
   'window-ai': [
     { id: 'gemini-nano', label: 'Gemini Nano' },
@@ -270,12 +270,12 @@ async function fetchWebLlmModels(): Promise<ModelEntry[]> {
   } catch {
     // Fallback if the package isn't installed or import fails
     return [
-      { id: 'gemma-3-4b-it-q4f16_1-MLC', label: 'Gemma 3 4B IT (q4f16)' },
-      { id: 'gemma-3-1b-it-q4f16_1-MLC', label: 'Gemma 3 1B IT (q4f16)' },
-      { id: 'Phi-3.5-mini-instruct-q4f16_1-MLC', label: 'Phi-3.5 Mini Instruct (q4f16)' },
-      { id: 'SmolLM2-1.7B-Instruct-q4f16_1-MLC', label: 'SmolLM2 1.7B Instruct (q4f16)' },
       { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 3B Instruct (q4f16)' },
-      { id: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 1.5B Instruct (q4f16)' },
+      { id: 'Qwen2.5-3B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 3B Instruct (q4f16)' },
+      { id: 'Phi-3.5-mini-instruct-q4f16_1-MLC', label: 'Phi-3.5 Mini Instruct (q4f16)' },
+      { id: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B IT (q4f16)' },
+      { id: 'SmolLM2-1.7B-Instruct-q4f16_1-MLC', label: 'SmolLM2 1.7B Instruct (q4f16)' },
+      { id: 'Qwen2.5-7B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 7B Instruct (q4f16)' },
     ]
   }
 }

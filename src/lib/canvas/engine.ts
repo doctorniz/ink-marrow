@@ -89,6 +89,42 @@ export class CanvasEngine {
   setDimensions(w: number, h: number): void {
     this._width = w
     this._height = h
+    // If the engine is already initialized (e.g. called from readCanvasFile
+    // after init), propagate so loadLayers uses the right RT size.
+    if (this._initialized) {
+      this.layerManager.setCanvasDimensions(w, h)
+    }
+  }
+
+  /**
+   * Expand the canvas to fit the given canvas-space point, if it lies
+   * outside the current drawing bounds.
+   *
+   * Expansion is quantized to 1024-pixel steps so a single stroke near
+   * the edge doesn't produce dozens of tiny grow operations. Calling this
+   * repeatedly with the same out-of-bounds point is cheap — the inner
+   * check in `LayerManager.expandCanvas` short-circuits when the target
+   * dimensions haven't changed.
+   *
+   * Only positive expansion (right / down) is handled. Negative canvas
+   * coordinates are not currently drawable — pan back to the canvas
+   * origin to reach those areas.
+   */
+  expandToFit(x: number, y: number): void {
+    if (!this._initialized) return
+    if (x < this._width && y < this._height) return
+
+    const STEP = 1024
+    const newW = x >= this._width
+      ? Math.ceil((x + 1) / STEP) * STEP
+      : this._width
+    const newH = y >= this._height
+      ? Math.ceil((y + 1) / STEP) * STEP
+      : this._height
+
+    this.layerManager.expandCanvas(newW, newH)
+    this._width = this.layerManager.canvasWidth
+    this._height = this.layerManager.canvasHeight
   }
 
   /**

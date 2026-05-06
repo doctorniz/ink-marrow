@@ -13,8 +13,8 @@ function formatElapsed(ms: number): string {
 }
 
 interface AudioRecorderBarProps {
-  /** Called with the MP3 bytes and duration when recording is complete. */
-  onComplete: (mp3Bytes: Uint8Array, durationMs: number) => void
+  /** Called with the audio bytes, duration, and MIME type when recording is complete. */
+  onComplete: (audioBytes: Uint8Array, durationMs: number, mimeType: string) => void
   /** Called when the user cancels the recording. */
   onCancel: () => void
   /** Whether to auto-start recording on mount. Default true. */
@@ -78,8 +78,8 @@ export function AudioRecorderBar({
   const handleStop = useCallback(() => {
     const r = recorderRef.current
     if (!r) return
-    r.stop().then(({ mp3Bytes, durationMs }) => {
-      completeRef.current(mp3Bytes, durationMs)
+    r.stop().then(({ audioBytes, durationMs, mimeType }) => {
+      completeRef.current(audioBytes, durationMs, mimeType)
     }).catch((err) => {
       console.error('Recording stop failed:', err)
       setError('Failed to process recording')

@@ -29,7 +29,10 @@ import {
 } from 'lucide-react'
 import type { FileSystemAdapter } from '@/lib/fs'
 import { FileType } from '@/types/files'
-import { editorTabTypeFromVaultPath, titleFromVaultPath } from '@/lib/notes/editor-tab-from-path'
+import {
+  detectEditorTabType,
+  titleFromVaultPath,
+} from '@/lib/notes/editor-tab-from-path'
 import type { FileEntry } from '@/types/files'
 import { isNotesTreeEntry, sortTreeEntries } from '@/lib/notes/tree-filter'
 import { vaultPathsPointToSameFile } from '@/lib/fs/vault-path-equiv'
@@ -109,14 +112,18 @@ export function NotesFileTree({
 
   function handleOpenFile(path: string) {
     setSelectedPath(path)
-    openTab({
-      id: crypto.randomUUID(),
-      path,
-      type: editorTabTypeFromVaultPath(path),
-      title: fileTitleFromPath(path),
-      isDirty: false,
-    })
     addRecentFile(path)
+
+    void (async () => {
+      const type = await detectEditorTabType(vaultFs, path)
+      openTab({
+        id: crypto.randomUUID(),
+        path,
+        type,
+        title: fileTitleFromPath(path),
+        isDirty: false,
+      })
+    })()
   }
 
   async function handleExternalImport(files: FileList, targetFolder: string) {

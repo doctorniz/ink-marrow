@@ -13,6 +13,7 @@ import { createEmptyCanvasJson } from '@/lib/canvas/serializer'
 import { createEmptyKanban } from '@/lib/kanban'
 import { createBlankXlsx } from '@/lib/spreadsheet/xlsx-io'
 import { reindexMarkdownPath } from '@/lib/search/build-vault-index'
+import { allocateUniqueFilePath } from '@/lib/notes/new-note'
 import { toast } from '@/stores/toast'
 
 function useDefaultFolder() {
@@ -54,16 +55,17 @@ export function useNewFileActions(onDone: () => void) {
     setBusy(true)
     try {
       const stem = `Note ${new Date().toISOString().slice(0, 10)}`
-      const filename = `${stem}.md`
       const dir = defaultDir()
-      const filePath = dir ? `${dir}/${filename}` : filename
-      const content = `---\ntitle: "${stem}"\ndate: "${new Date().toISOString()}"\ntags: []\n---\n\n`
+      const rawPath = dir ? `${dir}/${stem}.md` : `${stem}.md`
+      const filePath = await allocateUniqueFilePath(vaultFs, rawPath)
+      const title = filePath.replace(/\.md$/i, '').split('/').pop() ?? stem
+      const content = `---\ntitle: "${title}"\ndate: "${new Date().toISOString()}"\ntags: []\n---\n\n`
       await vaultFs.writeTextFile(filePath, content)
       useEditorStore.getState().openTab({
         id: crypto.randomUUID(),
         path: filePath,
         type: 'markdown',
-        title: stem,
+        title,
         isDirty: false,
         isNew: true,
       })
@@ -82,9 +84,10 @@ export function useNewFileActions(onDone: () => void) {
     setBusy(true)
     try {
       const stem = `Drawing ${new Date().toISOString().slice(0, 10)}`
-      const filename = `${stem}.canvas`
       const dir = defaultDir()
-      const path = dir ? `${dir}/${filename}` : filename
+      const rawPath = dir ? `${dir}/${stem}.canvas` : `${stem}.canvas`
+      const path = await allocateUniqueFilePath(vaultFs, rawPath)
+      const title = path.replace(/\.canvas$/i, '').split('/').pop() ?? stem
       await vaultFs.writeTextFile(path, createEmptyCanvasJson())
       useUiStore.getState().setActiveView(ViewMode.Vault)
       useUiStore.getState().setVaultMode('tree')
@@ -93,7 +96,7 @@ export function useNewFileActions(onDone: () => void) {
         id: crypto.randomUUID(),
         path,
         type: 'canvas',
-        title: stem,
+        title,
         isDirty: false,
         isNew: true,
       })
@@ -111,9 +114,10 @@ export function useNewFileActions(onDone: () => void) {
     setBusy(true)
     try {
       const stem = `PDF ${new Date().toISOString().slice(0, 10)}`
-      const filename = `${stem}.pdf`
       const dir = defaultDir()
-      const path = dir ? `${dir}/${filename}` : filename
+      const rawPath = dir ? `${dir}/${stem}.pdf` : `${stem}.pdf`
+      const path = await allocateUniqueFilePath(vaultFs, rawPath)
+      const title = path.replace(/\.pdf$/i, '').split('/').pop() ?? stem
       const pdfBytes = await createBlankPdf({ style: pdfPageStyle, size: 'a4' })
       await vaultFs.writeFile(path, pdfBytes)
       useUiStore.getState().setActiveView(ViewMode.Vault)
@@ -123,7 +127,7 @@ export function useNewFileActions(onDone: () => void) {
         id: crypto.randomUUID(),
         path,
         type: 'pdf',
-        title: stem,
+        title,
         isDirty: false,
         isNew: true,
       })
@@ -187,15 +191,16 @@ export function useNewFileActions(onDone: () => void) {
     setBusy(true)
     try {
       const stem = `Kanban ${new Date().toISOString().slice(0, 10)}`
-      const filename = `${stem}.md`
       const dir = defaultDir()
-      const filePath = dir ? `${dir}/${filename}` : filename
+      const rawPath = dir ? `${dir}/${stem}.md` : `${stem}.md`
+      const filePath = await allocateUniqueFilePath(vaultFs, rawPath)
+      const title = filePath.replace(/\.md$/i, '').split('/').pop() ?? stem
       await vaultFs.writeTextFile(filePath, createEmptyKanban())
       useEditorStore.getState().openTab({
         id: crypto.randomUUID(),
         path: filePath,
         type: 'kanban',
-        title: stem,
+        title,
         isDirty: false,
         isNew: true,
       })
@@ -214,19 +219,20 @@ export function useNewFileActions(onDone: () => void) {
     setBusy(true)
     try {
       const stem = `Spreadsheet ${new Date().toISOString().slice(0, 10)}`
-      const filename = `${stem}.xlsx`
       const dir = defaultDir()
-      const path = dir ? `${dir}/${filename}` : filename
+      const rawPath = dir ? `${dir}/${stem}.xlsx` : `${stem}.xlsx`
+      const path = await allocateUniqueFilePath(vaultFs, rawPath)
       const bytes = createBlankXlsx()
       await vaultFs.writeFile(path, bytes)
       useUiStore.getState().setActiveView(ViewMode.Vault)
       useUiStore.getState().setVaultMode('tree')
+      const title = path.replace(/\.xlsx$/i, '').split('/').pop() ?? stem
       useFileTreeStore.getState().setSelectedPath(path)
       useEditorStore.getState().openTab({
         id: crypto.randomUUID(),
         path,
         type: 'spreadsheet',
-        title: stem,
+        title,
         isDirty: false,
         isNew: true,
       })

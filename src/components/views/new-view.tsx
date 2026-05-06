@@ -23,6 +23,7 @@ import {
   deleteTemplate,
   type NoteTemplate,
 } from '@/lib/notes/template-store'
+import { allocateUniqueFilePath } from '@/lib/notes/new-note'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/utils/cn'
 import { PDFDocument } from 'pdf-lib'
@@ -75,32 +76,41 @@ function NewMarkdownNote({ templates, templateFolder }: { templates: NoteTemplat
   const [name, setName] = useState('')
   const [folder, setFolder] = useState(defaultFolder)
   const [templateId, setTemplateId] = useState<string | ''>('')
+  const [isCreating, setIsCreating] = useState(false)
 
   const create = useCallback(async () => {
-    const stem = name.trim() || `Note ${new Date().toISOString().slice(0, 10)}`
-    const filename = stem.endsWith('.md') ? stem : `${stem}.md`
-    const dir = folder === '/' ? '' : folder
-    const filePath = `${dir}/${filename}`.replace(/^\/+/, '')
+    if (isCreating) return
+    setIsCreating(true)
+    try {
+      const stem = name.trim() || `Note ${new Date().toISOString().slice(0, 10)}`
+      const filename = stem.endsWith('.md') ? stem : `${stem}.md`
+      const dir = folder === '/' ? '' : folder
+      const rawPath = `${dir}/${filename}`.replace(/^\/+/, '')
+      const filePath = await allocateUniqueFilePath(vaultFs, rawPath)
+      const finalStem = filePath.replace(/\.md$/, '').split('/').pop() ?? stem.replace(/\.md$/, '')
 
-    let content = `---\ntitle: "${stem.replace(/\.md$/, '')}"\ndate: "${new Date().toISOString()}"\ntags: []\n---\n\n`
+      let content = `---\ntitle: "${finalStem}"\ndate: "${new Date().toISOString()}"\ntags: []\n---\n\n`
 
-    if (templateId) {
-      try {
-        content = await readTemplate(vaultFs, templateId, templateFolder)
-      } catch { /* fall through to default */ }
+      if (templateId) {
+        try {
+          content = await readTemplate(vaultFs, templateId, templateFolder)
+        } catch { /* fall through to default */ }
+      }
+
+      await vaultFs.writeTextFile(filePath, content)
+
+      openTab({
+        id: crypto.randomUUID(),
+        path: filePath,
+        type: 'markdown',
+        title: finalStem,
+        isDirty: false,
+      })
+      setActiveView(ViewMode.Vault)
+    } finally {
+      setIsCreating(false)
     }
-
-    await vaultFs.writeTextFile(filePath, content)
-
-    openTab({
-      id: crypto.randomUUID(),
-      path: filePath,
-      type: 'markdown',
-      title: stem.replace(/\.md$/, ''),
-      isDirty: false,
-    })
-    setActiveView(ViewMode.Vault)
-  }, [name, folder, templateId, vaultFs, openTab, setActiveView])
+  }, [isCreating, name, folder, templateId, vaultFs, openTab, setActiveView])
 
   return (
     <div className="space-y-4">
@@ -144,7 +154,7 @@ function NewMarkdownNote({ templates, templateFolder }: { templates: NoteTemplat
           ))}
         </select>
       </label>
-      <Button size="sm" onClick={() => void create()}>
+      <Button size="sm" disabled={isCreating} onClick={() => void create()}>
         <Plus className="size-3.5" /> Create note
       </Button>
     </div>
@@ -167,21 +177,29 @@ function NewPdfNote() {
   const [folder, setFolder] = useState('/')
   const [style, setStyle] = useState<PageStyle>('blank')
   const [size, setSize] = useState<PageSize>('a4')
+  const [isCreating, setIsCreating] = useState(false)
 
   const create = useCallback(async () => {
-    const stem = name.trim() || `PDF ${new Date().toISOString().slice(0, 10)}`
-    const filename = stem.endsWith('.pdf') ? stem : `${stem}.pdf`
-    const dir = folder === '/' ? '' : folder
-    const path = `${dir}/${filename}`.replace(/^\/+/, '')
+    if (isCreating) return
+    setIsCreating(true)
+    try {
+      const stem = name.trim() || `PDF ${new Date().toISOString().slice(0, 10)}`
+      const filename = stem.endsWith('.pdf') ? stem : `${stem}.pdf`
+      const dir = folder === '/' ? '' : folder
+      const rawPath = `${dir}/${filename}`.replace(/^\/+/, '')
+      const path = await allocateUniqueFilePath(vaultFs, rawPath)
 
-    const blankDoc = await PDFDocument.create()
-    const blankBytes = await blankDoc.save()
-    const opts: PdfNewPageOptions = { style, size }
-    const pdfBytes = await insertBlankPage(blankBytes, 0, opts)
-    await vaultFs.writeFile(path, pdfBytes)
+      const blankDoc = await PDFDocument.create()
+      const blankBytes = await blankDoc.save()
+      const opts: PdfNewPageOptions = { style, size }
+      const pdfBytes = await insertBlankPage(blankBytes, 0, opts)
+      await vaultFs.writeFile(path, pdfBytes)
 
-    setActiveView(ViewMode.Vault)
-  }, [name, folder, style, size, vaultFs, setActiveView])
+      setActiveView(ViewMode.Vault)
+    } finally {
+      setIsCreating(false)
+    }
+  }, [isCreating, name, folder, style, size, vaultFs, setActiveView])
 
   const styles: { value: PageStyle; label: string }[] = [
     { value: 'blank', label: 'Blank' },
@@ -263,7 +281,7 @@ function NewPdfNote() {
           </div>
         </fieldset>
       </div>
-      <Button size="sm" onClick={() => void create()}>
+      <Button size="sm" disabled={isCreating} onClick={() => void create()}>
         <Plus className="size-3.5" /> Create PDF note
       </Button>
     </div>
@@ -282,24 +300,33 @@ function NewCanvas() {
   const folders = useFolderList()
   const [name, setName] = useState('')
   const [folder, setFolder] = useState('/')
+  const [isCreating, setIsCreating] = useState(false)
 
   const create = useCallback(async () => {
-    const stem = name.trim() || `Drawing ${new Date().toISOString().slice(0, 10)}`
-    const filename = stem.endsWith('.canvas') ? stem : `${stem}.canvas`
-    const dir = folder === '/' ? '' : folder
-    const filePath = `${dir}/${filename}`.replace(/^\/+/, '')
+    if (isCreating) return
+    setIsCreating(true)
+    try {
+      const stem = name.trim() || `Drawing ${new Date().toISOString().slice(0, 10)}`
+      const filename = stem.endsWith('.canvas') ? stem : `${stem}.canvas`
+      const dir = folder === '/' ? '' : folder
+      const rawPath = `${dir}/${filename}`.replace(/^\/+/, '')
+      const filePath = await allocateUniqueFilePath(vaultFs, rawPath)
+      const finalStem = filePath.replace(/\.canvas$/, '').split('/').pop() ?? stem.replace(/\.canvas$/, '')
 
-    await vaultFs.writeTextFile(filePath, createEmptyCanvasJson())
+      await vaultFs.writeTextFile(filePath, createEmptyCanvasJson())
 
-    openTab({
-      id: crypto.randomUUID(),
-      path: filePath,
-      type: 'canvas',
-      title: stem.replace(/\.canvas$/, ''),
-      isDirty: false,
-    })
-    setActiveView(ViewMode.Vault)
-  }, [name, folder, vaultFs, openTab, setActiveView])
+      openTab({
+        id: crypto.randomUUID(),
+        path: filePath,
+        type: 'canvas',
+        title: finalStem,
+        isDirty: false,
+      })
+      setActiveView(ViewMode.Vault)
+    } finally {
+      setIsCreating(false)
+    }
+  }, [isCreating, name, folder, vaultFs, openTab, setActiveView])
 
   return (
     <div className="space-y-4">
@@ -328,7 +355,7 @@ function NewCanvas() {
           </select>
         </label>
       </div>
-      <Button size="sm" onClick={() => void create()}>
+      <Button size="sm" disabled={isCreating} onClick={() => void create()}>
         <Plus className="size-3.5" /> Create drawing
       </Button>
     </div>

@@ -54,7 +54,7 @@ export function TaskDetailDialog({
   useEffect(() => {
     if (!open || !task) return
     setTitle(task.title)
-    const bodyWithoutH1 = task.body.replace(/^#\s+.+\n?/, '').trim()
+    const bodyWithoutH1 = task.body.replace(/^\n*#\s+[^\n]*\n?/, '').trim()
     setBody(bodyWithoutH1)
     setPriority(task.priority)
     setDue(task.due ?? '')

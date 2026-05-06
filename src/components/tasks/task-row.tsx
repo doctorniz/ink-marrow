@@ -6,8 +6,15 @@ import { useVaultSession } from '@/contexts/vault-fs-context'
 import { isDueToday, isOverdue } from '@/lib/tasks'
 import { useTasksStore } from '@/stores/tasks'
 import type { TaskItem } from '@/types/tasks'
-import { PRIORITY_BG } from '@/types/tasks'
 import { cn } from '@/utils/cn'
+
+// Priority ring colours for the checkbox border
+const PRIORITY_RING: Record<number, string> = {
+  1: 'border-red-500',
+  2: 'border-orange-400',
+  3: 'border-blue-400',
+  4: 'border-border',
+}
 
 function formatDue(due: string): string {
   const d = new Date(due)
@@ -64,109 +71,121 @@ export function TaskRow({
     [onEdit, item],
   )
 
+  const priorityRing = PRIORITY_RING[item.priority] ?? 'border-border'
+
   return (
     <>
       <div
         className={cn(
-          'group flex items-center gap-2 rounded-lg px-3 py-2 transition-colors',
-          isDone ? 'opacity-50' : 'hover:bg-bg-hover',
+          'group flex items-center gap-2.5 border-b border-border/40 py-2.5 transition-colors last:border-b-0',
+          isDone ? 'opacity-40' : 'hover:bg-bg-hover/50',
+          'cursor-pointer',
         )}
-        style={{ paddingLeft: `${12 + depth * 24}px` }}
+        style={{ paddingLeft: `${16 + depth * 24}px`, paddingRight: 12 }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={() => onEdit(item)}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter') onEdit(item) }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onEdit(item)
+        }}
       >
         {/* Collapse chevron or spacer */}
         {hasChildren ? (
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); setCollapsed((c) => !c) }}
-            className="text-fg-muted hover:text-fg -ml-1 shrink-0 rounded p-0.5"
+            onClick={(e) => {
+              e.stopPropagation()
+              setCollapsed((c) => !c)
+            }}
+            className="text-fg-muted hover:text-fg -mx-0.5 shrink-0 rounded p-0.5 touch-manipulation"
           >
-            {collapsed
-              ? <ChevronRight className="size-3.5" />
-              : <ChevronDown className="size-3.5" />}
+            {collapsed ? (
+              <ChevronRight className="size-3.5" />
+            ) : (
+              <ChevronDown className="size-3.5" />
+            )}
           </button>
         ) : (
-          <span className="-ml-1 w-[18px] shrink-0" />
+          <span className="w-4 shrink-0" />
         )}
 
-        {/* Checkbox */}
+        {/* Checkbox — priority ring colour */}
         <button
           type="button"
           onClick={handleToggle}
           className={cn(
-            'flex size-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+            'flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors touch-manipulation',
             isDone
-              ? 'border-accent bg-accent'
-              : 'border-border hover:border-accent',
+              ? 'border-fg-muted/40 bg-fg-muted/20'
+              : cn(priorityRing, 'hover:bg-accent/10'),
           )}
+          aria-label={isDone ? 'Mark incomplete' : 'Mark complete'}
         >
-          {isDone && <Check className="text-accent-fg size-3" strokeWidth={3} />}
+          {isDone && <Check className="text-fg-muted/60 size-3" strokeWidth={3} />}
         </button>
-
-        {/* Priority dot */}
-        {item.priority < 4 && (
-          <span className={cn('size-2 shrink-0 rounded-full', PRIORITY_BG[item.priority])} />
-        )}
 
         {/* Title */}
         <span
           className={cn(
-            'min-w-0 flex-1 truncate text-sm',
+            'min-w-0 flex-1 truncate text-sm leading-snug',
             isDone ? 'text-fg-muted line-through' : 'text-fg',
           )}
         >
           {item.title || 'Untitled'}
         </span>
 
-        {/* Subtask count */}
-        {hasChildren && (
-          <span className="text-fg-muted/60 shrink-0 text-[10px] tabular-nums">
-            {doneChildren}/{item.children.length}
-          </span>
-        )}
+        {/* Right-side metadata */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* Subtask count */}
+          {hasChildren && (
+            <span className="text-fg-muted/60 text-[10px] tabular-nums">
+              {doneChildren}/{item.children.length}
+            </span>
+          )}
 
-        {/* Due badge */}
-        {item.due && !isDone && (
-          <span
+          {/* Tags — hide on very small screens */}
+          {item.tags.length > 0 && !isDone && (
+            <div className="hidden gap-1 xs:flex">
+              {item.tags.slice(0, 2).map((tag) => (
+                <span
+                  key={tag}
+                  className="bg-accent/10 text-accent rounded-full px-1.5 py-0.5 text-[10px]"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Due badge */}
+          {item.due && !isDone && (
+            <span
+              className={cn(
+                'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                isOverdue(item)
+                  ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                  : isDueToday(item)
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    : 'bg-bg-tertiary text-fg-muted',
+              )}
+            >
+              {formatDue(item.due)}
+            </span>
+          )}
+
+          {/* Hover actions */}
+          <div
             className={cn(
-              'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium',
-              isOverdue(item)
-                ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
-                : isDueToday(item)
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                  : 'bg-bg-tertiary text-fg-muted',
+              'flex gap-0.5 transition-opacity',
+              hovered ? 'opacity-100' : 'opacity-0',
             )}
           >
-            {formatDue(item.due)}
-          </span>
-        )}
-
-        {/* Tags */}
-        {item.tags.length > 0 && !isDone && (
-          <div className="hidden gap-1 sm:flex">
-            {item.tags.slice(0, 2).map((tag) => (
-              <span
-                key={tag}
-                className="bg-accent/10 text-accent rounded-full px-1.5 py-0.5 text-[10px]"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Hover actions */}
-        {hovered && (
-          <div className="flex shrink-0 gap-0.5">
             <button
               type="button"
               onClick={handleEdit}
-              className="text-fg-muted/50 hover:text-fg rounded-md p-1 transition-colors"
+              className="text-fg-muted/60 hover:text-fg rounded-md p-1 transition-colors touch-manipulation"
               aria-label="Edit task"
             >
               <Pencil className="size-3.5" />
@@ -174,17 +193,18 @@ export function TaskRow({
             <button
               type="button"
               onClick={handleDelete}
-              className="text-fg-muted/50 hover:text-destructive rounded-md p-1 transition-colors"
+              className="text-fg-muted/60 hover:text-destructive rounded-md p-1 transition-colors touch-manipulation"
               aria-label="Delete task"
             >
               <Trash2 className="size-3.5" />
             </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Children */}
-      {hasChildren && !collapsed &&
+      {hasChildren &&
+        !collapsed &&
         item.children.map((child) => (
           <TaskRow key={child.path} item={child} depth={depth + 1} onEdit={onEdit} />
         ))}

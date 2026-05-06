@@ -41,7 +41,7 @@ import { InlineFileTitle } from '@/components/shell/inline-file-title'
 import { MoveToFolderDialog } from '@/components/file-browser/move-to-folder-dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { cn } from '@/utils/cn'
-import { editorTabTypeFromVaultPath, titleFromVaultPath } from '@/lib/notes/editor-tab-from-path'
+import { detectEditorTabType, titleFromVaultPath } from '@/lib/notes/editor-tab-from-path'
 
 /* ------------------------------------------------------------------ */
 /* Constants and helpers                                               */
@@ -152,14 +152,17 @@ export function FileBrowserView({ showHidden = false }: { showHidden?: boolean }
     useUiStore.getState().setVaultMode('tree')
     useFileTreeStore.getState().setSelectedPath(r.path)
     useEditorStore.getState().addRecentFile(r.path)
-    const editorType = editorTabTypeFromVaultPath(r.path)
-    useEditorStore.getState().openTab({
-      id: crypto.randomUUID(),
-      path: r.path,
-      type: editorType,
-      title: r.title,
-      isDirty: false,
-    })
+
+    void (async () => {
+      const editorType = await detectEditorTabType(vaultFs, r.path)
+      useEditorStore.getState().openTab({
+        id: crypto.randomUUID(),
+        path: r.path,
+        type: editorType,
+        title: r.title,
+        isDirty: false,
+      })
+    })()
   }
 
   const listScrollRef = useRef<HTMLDivElement>(null)
@@ -334,19 +337,21 @@ export function FileBrowserView({ showHidden = false }: { showHidden?: boolean }
       setCurrentFolder(item.path)
       return
     }
-    const editorType = editorTabTypeFromVaultPath(item.path)
-
     useUiStore.getState().setActiveView(ViewMode.Vault)
     useUiStore.getState().setVaultMode('tree')
     useFileTreeStore.getState().setSelectedPath(item.path)
-    useEditorStore.getState().openTab({
-      id: crypto.randomUUID(),
-      path: item.path,
-      type: editorType,
-      title: titleFromVaultPath(item.path),
-      isDirty: false,
-    })
     useEditorStore.getState().addRecentFile(item.path)
+
+    void (async () => {
+      const editorType = await detectEditorTabType(vaultFs, item.path)
+      useEditorStore.getState().openTab({
+        id: crypto.randomUUID(),
+        path: item.path,
+        type: editorType,
+        title: titleFromVaultPath(item.path),
+        isDirty: false,
+      })
+    })()
   }
 
   function handleGoUp() {

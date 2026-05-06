@@ -71,51 +71,98 @@ interface MlcModule {
   ) => Promise<MlcEngine>
 }
 
-export const DEFAULT_WEBLLM_MODEL = 'gemma-3-4b-it-q4f16_1-MLC'
+export const DEFAULT_WEBLLM_MODEL = 'Llama-3.2-3B-Instruct-q4f16_1-MLC'
 
 /**
- * Conservative token budget for WebLLM requests. MLC small models are
- * compiled with a 4 096-token hard ceiling that cannot be overridden at
- * runtime. We reserve ~600 tokens for the assistant response and keep the
- * rest for system + history. The rough heuristic is 4 chars ≈ 1 token.
+ * All small MLC models in WebLLM 0.2.x are compiled with a hard 4 096-token
+ * ceiling. We target ~2 800 prompt tokens to leave ~1 200 tokens for the
+ * assistant reply. MLC tokenisers run ≈ 3 chars/token for English prose, so
+ * 2 800 × 3 = 8 400 chars is our prompt budget.
  */
-const WEBLLM_MAX_PROMPT_CHARS = 3500 * 4 // ≈ 3 500 tokens
+const WEBLLM_MAX_PROMPT_CHARS = 2800 * 3 // ≈ 2 800 tokens
+
+/** Minimum document chars to retain so the model has something to work with. */
+const MIN_DOC_CHARS = 1500
 
 /**
- * Trim the `<document …>…</document>` block inside the system message so
- * the full prompt stays within `WEBLLM_MAX_PROMPT_CHARS`. Other messages
- * are left untouched; if there is no document block the messages are
- * returned as-is.
+ * Fit messages into the WebLLM context window using a two-pass strategy:
+ *
+ * Pass 1 — drop oldest non-system conversation pairs (user+assistant) until
+ *           the total is under budget. This preserves document context, which
+ *           is the whole point of per-document and vault chat.
+ *
+ * Pass 2 — if still over budget (e.g. a very long document with no history),
+ *           trim the inline `<document>` or `<source>` blocks in the system
+ *           message. We never drop below MIN_DOC_CHARS so the model always
+ *           has at least a meaningful slice to work from.
  */
 function fitToContextWindow(messages: WireMessage[]): WireMessage[] {
-  const totalChars = messages.reduce(
-    (n, m) => n + (typeof m.content === 'string' ? m.content.length : 0),
-    0,
-  )
-  if (totalChars <= WEBLLM_MAX_PROMPT_CHARS) return messages
+  const charLen = (m: WireMessage) =>
+    typeof m.content === 'string' ? m.content.length : 0
+  const total = () => messages.reduce((n, m) => n + charLen(m), 0)
 
-  const sysIdx = messages.findIndex((m) => m.role === 'system')
-  if (sysIdx === -1 || typeof messages[sysIdx].content !== 'string') return messages
+  if (total() <= WEBLLM_MAX_PROMPT_CHARS) return messages
 
-  const sys = messages[sysIdx].content as string
-  const docOpen = sys.indexOf('<document')
-  const docClose = sys.lastIndexOf('</document>')
-  if (docOpen === -1 || docClose === -1) return messages
+  // --- Pass 1: drop oldest history pairs -----------------------------------
+  // Build a mutable working copy. System message stays at index 0;
+  // conversation messages follow.
+  let working = [...messages]
 
-  // How many characters we need to shed from the document block.
-  const excess = totalChars - WEBLLM_MAX_PROMPT_CHARS
-  const docBlock = sys.slice(docOpen, docClose + '</document>'.length)
-  const allowedDocLen = Math.max(200, docBlock.length - excess)
-  const trimmedDoc =
-    docBlock.slice(0, allowedDocLen) +
-    '\n[… truncated to fit context window …]</document>'
+  // Find conversation messages (non-system), oldest first.
+  // We drop user+assistant pairs together to keep the thread coherent.
+  while (total() > WEBLLM_MAX_PROMPT_CHARS) {
+    // Find the first user message after the system message.
+    const firstUserIdx = working.findIndex(
+      (m, i) => i > 0 && m.role === 'user',
+    )
+    if (firstUserIdx === -1) break // nothing left to drop
+
+    // Drop that user message and the immediately following assistant reply
+    // (if any). Keep the *last* user message — that's the current question.
+    const lastUserIdx = working.reduce(
+      (last, m, i) => (m.role === 'user' ? i : last),
+      -1,
+    )
+    if (firstUserIdx === lastUserIdx) break // only one user turn — stop
+
+    const end =
+      firstUserIdx + 1 < working.length &&
+      working[firstUserIdx + 1].role === 'assistant'
+        ? firstUserIdx + 2
+        : firstUserIdx + 1
+    working = [...working.slice(0, firstUserIdx), ...working.slice(end)]
+  }
+
+  if (total() <= WEBLLM_MAX_PROMPT_CHARS) return working
+
+  // --- Pass 2: trim document / source blocks in the system message ---------
+  const sysIdx = working.findIndex((m) => m.role === 'system')
+  if (sysIdx === -1 || typeof working[sysIdx].content !== 'string') return working
+
+  const sys = working[sysIdx].content as string
+
+  // Support both <document …>…</document> (per-doc chat) and
+  // <source …>…</source> (vault RAG) blocks.
+  const openTag = sys.includes('<document') ? '<document' : '<source'
+  const closeTag = openTag === '<document' ? '</document>' : '</source>'
+
+  const blockOpen = sys.indexOf(openTag)
+  const blockClose = sys.lastIndexOf(closeTag)
+  if (blockOpen === -1 || blockClose === -1) return working
+
+  const excess = total() - WEBLLM_MAX_PROMPT_CHARS
+  const block = sys.slice(blockOpen, blockClose + closeTag.length)
+  const allowedLen = Math.max(MIN_DOC_CHARS, block.length - excess)
+  const trimmedBlock =
+    block.slice(0, allowedLen) +
+    `\n[… truncated to fit ${WEBLLM_MAX_PROMPT_CHARS / 3}-token context window …]${closeTag}`
 
   const newSys =
-    sys.slice(0, docOpen) +
-    trimmedDoc +
-    sys.slice(docClose + '</document>'.length)
+    sys.slice(0, blockOpen) +
+    trimmedBlock +
+    sys.slice(blockClose + closeTag.length)
 
-  return messages.map((m, i) =>
+  return working.map((m, i) =>
     i === sysIdx ? { ...m, content: newSys } : m,
   )
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { CanvasEngine } from '@/lib/canvas/engine'
 import { useCanvasStore } from '@/stores/canvas'
 import { hexToRgba, rgbToHex } from '@/lib/canvas/flood-fill'
-import type { CanvasTool } from '@/types/canvas'
+import type { CanvasTool, BrushSettings } from '@/types/canvas'
 
 interface CanvasViewportProps {
   engineRef: React.RefObject<CanvasEngine | null>
@@ -30,6 +30,9 @@ export function CanvasViewport({ engineRef, containerRef }: CanvasViewportProps)
   const activeTool = useCanvasStore((s) => s.activeTool)
   const activeLayerId = useCanvasStore((s) => s.activeLayerId)
   const layers = useCanvasStore((s) => s.layers)
+  const brushSettings = useCanvasStore((s) => s.brushSettings)
+  const eraserSize = useCanvasStore((s) => s.eraserSize)
+  const zoom = useCanvasStore((s) => s.viewport.zoom)
 
   const activeLayerLocked = useMemo(
     () => layers.find((l) => l.id === activeLayerId)?.locked ?? false,
@@ -37,8 +40,8 @@ export function CanvasViewport({ engineRef, containerRef }: CanvasViewportProps)
   )
 
   const cursor = useMemo(
-    () => cursorForTool(activeTool, activeLayerLocked),
-    [activeTool, activeLayerLocked],
+    () => cursorForTool(activeTool, activeLayerLocked, brushSettings, eraserSize, zoom),
+    [activeTool, activeLayerLocked, brushSettings, eraserSize, zoom],
   )
 
   const onPointerDown = useCallback(
@@ -70,6 +73,9 @@ export function CanvasViewport({ engineRef, containerRef }: CanvasViewportProps)
           ? { ...state.brushSettings, size: state.eraserSize }
           : state.brushSettings
 
+        // Auto-expand the canvas if this stroke starts beyond the current bounds.
+        engine.expandToFit(canvasPoint.x, canvasPoint.y)
+
         // Snapshot for undo before drawing
         void (async () => {
           const snapshot = await engine.undoManager.snapshotActiveLayer()
@@ -83,7 +89,11 @@ export function CanvasViewport({ engineRef, containerRef }: CanvasViewportProps)
           {
             x: canvasPoint.x,
             y: canvasPoint.y,
-            pressure: e.pressure || 0.5,
+            // Mouse is a binary device — spec reports 0.5 when pressed, but
+            // that halves the brush size vs the configured value. Treat mouse
+            // as full pressure so size-setting = actual painted size. Stylus
+            // and touch keep their real reported pressure for expression.
+            pressure: e.pointerType === 'mouse' ? 1.0 : (e.pressure || 0.5),
             tiltX: e.tiltX,
             tiltY: e.tiltY,
             timestamp: e.timeStamp,
@@ -191,11 +201,15 @@ export function CanvasViewport({ engineRef, containerRef }: CanvasViewportProps)
           ? { ...state.brushSettings, size: state.eraserSize }
           : state.brushSettings
 
+        // Auto-expand mid-stroke if the pointer crosses the canvas boundary.
+        // expandCanvas preserves scratchpad content so the stroke is seamless.
+        engine.expandToFit(canvasPoint.x, canvasPoint.y)
+
         engine.strokeEngine.continueStroke(
           {
             x: canvasPoint.x,
             y: canvasPoint.y,
-            pressure: e.pressure || 0.5,
+            pressure: e.pointerType === 'mouse' ? 1.0 : (e.pressure || 0.5),
             tiltX: e.tiltX,
             tiltY: e.tiltY,
             timestamp: e.timeStamp,
@@ -302,23 +316,129 @@ export function CanvasViewport({ engineRef, containerRef }: CanvasViewportProps)
 }
 
 /**
+ * Encode an SVG string as a CSS cursor url(...) value.
+ * The double-stroke technique (white thick + black thin) keeps the icon
+ * legible on both light and dark canvas backgrounds.
+ */
+function svgCursor(svg: string, hotspotX: number, hotspotY: number, fallback: string): string {
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${hotspotX} ${hotspotY}, ${fallback}`
+}
+
+// Lucide PaintBucket paths — hotspot at the paint-drop centre (20, 19)
+const FILL_CURSOR = svgCursor(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">` +
+  `<g stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">` +
+  `<path d="m19 11-8-8-8.5 8.5a5.5 5.5 0 0 0 11 0Z"/>` +
+  `<path d="m20 12 2-2"/><line x1="19" x2="21" y1="11" y2="9"/>` +
+  `<path d="M22 17v1a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0Z"/>` +
+  `</g>` +
+  `<g stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">` +
+  `<path d="m19 11-8-8-8.5 8.5a5.5 5.5 0 0 0 11 0Z"/>` +
+  `<path d="m20 12 2-2"/><line x1="19" x2="21" y1="11" y2="9"/>` +
+  `<path d="M22 17v1a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0Z"/>` +
+  `</g></svg>`,
+  20, 19, 'cell',
+)
+
+// Lucide Pipette paths — hotspot at the pipette tip (2, 22)
+const EYEDROPPER_CURSOR = svgCursor(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">` +
+  `<g stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">` +
+  `<path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/>` +
+  `<path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/>` +
+  `</g>` +
+  `<g stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">` +
+  `<path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/>` +
+  `<path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/>` +
+  `</g></svg>`,
+  2, 22, 'crosshair',
+)
+
+// Brush/eraser cursor size bounds (CSS cursor max is 128 × 128 in most browsers)
+const MIN_CURSOR_PX = 4
+const MAX_CURSOR_PX = 128
+
+/**
+ * Build a dynamic brush cursor SVG.
+ *
+ * The circle is filled with the brush color at the current opacity. Hardness
+ * drives a radial gradient: hardness=1 → solid fill, hardness=0 → full
+ * centre-to-edge fade. A white outer ring + semi-transparent dark inner ring
+ * keeps the cursor legible on both light and dark canvas backgrounds.
+ *
+ * Screen diameter = brushSize × zoom, clamped to 4–128 px.
+ * Hotspot is at the circle centre so clicks land in the middle of the dot.
+ */
+function buildBrushCursor(settings: BrushSettings, zoom: number): string {
+  const screenDia = Math.round(settings.size * zoom)
+  const d = Math.max(MIN_CURSOR_PX, Math.min(MAX_CURSOR_PX, screenDia))
+  const cx = d / 2
+  const r = Math.max(0.5, cx - 1.5) // inner radius, leaving room for the ring stroke
+  const hardnessPct = Math.round(settings.hardness * 100)
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${d}" height="${d}" viewBox="0 0 ${d} ${d}">` +
+    `<defs>` +
+    `<radialGradient id="bg" cx="${cx}" cy="${cx}" r="${r}" gradientUnits="userSpaceOnUse">` +
+    `<stop offset="${hardnessPct}%" stop-color="${settings.color}" stop-opacity="${settings.opacity}"/>` +
+    `<stop offset="100%" stop-color="${settings.color}" stop-opacity="0"/>` +
+    `</radialGradient>` +
+    `</defs>` +
+    `<circle cx="${cx}" cy="${cx}" r="${r}" stroke="white" stroke-width="2" fill="url(#bg)"/>` +
+    `<circle cx="${cx}" cy="${cx}" r="${r}" stroke="rgba(0,0,0,0.55)" stroke-width="1" fill="none"/>` +
+    `</svg>`
+  const hotspot = Math.round(cx)
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${hotspot} ${hotspot}, crosshair`
+}
+
+/**
+ * Build a dynamic eraser cursor SVG.
+ *
+ * Shows an empty ring (no fill) so the user can see through it to the pixels
+ * they are about to erase. Same double-ring contrast technique as the brush.
+ *
+ * Screen diameter = eraserSize × zoom, clamped to 4–128 px.
+ */
+function buildEraserCursor(eraserSize: number, zoom: number): string {
+  const screenDia = Math.round(eraserSize * zoom)
+  const d = Math.max(MIN_CURSOR_PX, Math.min(MAX_CURSOR_PX, screenDia))
+  const cx = d / 2
+  const r = Math.max(0.5, cx - 1)
+  // White fill previews the erase-to-white effect; dark border keeps it
+  // legible on both light and dark canvas backgrounds.
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${d}" height="${d}" viewBox="0 0 ${d} ${d}">` +
+    `<circle cx="${cx}" cy="${cx}" r="${r}" fill="white" stroke="rgba(0,0,0,0.5)" stroke-width="1.5"/>` +
+    `</svg>`
+  const hotspot = Math.round(cx)
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${hotspot} ${hotspot}, crosshair`
+}
+
+/**
  * Resolve the CSS cursor for a given tool + active-layer-lock state.
  *
  * Locked active layer short-circuits to `not-allowed` for any tool that
- * would mutate pixels (brush, eraser, fill, eyedropper-is-read-only-so-ok,
- * pan-doesn't-care). We deliberately still allow `grab` for pan even when
- * the layer is locked — panning the viewport is never a mutation.
+ * would mutate pixels (brush, eraser, fill — eyedropper is read-only,
+ * pan doesn't mutate). We deliberately still allow `grab` for pan even
+ * when the layer is locked — panning the viewport is never a mutation.
  */
-function cursorForTool(tool: CanvasTool, locked: boolean): string {
+function cursorForTool(
+  tool: CanvasTool,
+  locked: boolean,
+  brushSettings: BrushSettings,
+  eraserSize: number,
+  zoom: number,
+): string {
   if (tool === 'pan') return 'grab'
   if (locked) return 'not-allowed'
   switch (tool) {
-    case 'eyedropper':
-      return 'copy'
-    case 'fill':
-      return 'cell'
     case 'brush':
+      return buildBrushCursor(brushSettings, zoom)
     case 'eraser':
+      return buildEraserCursor(eraserSize, zoom)
+    case 'eyedropper':
+      return EYEDROPPER_CURSOR
+    case 'fill':
+      return FILL_CURSOR
     default:
       return 'crosshair'
   }

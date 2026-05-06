@@ -15,6 +15,7 @@
 
 import { parseNote } from '@/lib/markdown'
 import { loadPdfjs } from '@/lib/pdf/pdfjs-loader'
+import { extractBestExcerpt } from '@/lib/chat/vault-rag'
 import type { FileSystemAdapter } from '@/lib/fs'
 import type { ChatSettings } from '@/types/chat'
 
@@ -77,10 +78,39 @@ export interface DocumentContext {
   fillRatio: number
 }
 
+/**
+ * Tokenise a plain-text query into searchable terms (3+ char words, lowercased).
+ * Mirrors what MiniSearch would extract so `extractBestExcerpt` can find the
+ * same regions the search index scores highest.
+ */
+function queryToTerms(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length > 2)
+}
+
+/**
+ * Smart-cap: if the body is within budget return it as-is; otherwise use
+ * `extractBestExcerpt` to pick the window most relevant to the user's query
+ * (highest density of query-term hits). Falls back to head-truncation when no
+ * query is provided, preserving the previous behaviour for large-context models.
+ */
+function smartCap(body: string, maxChars: number, query?: string): string {
+  if (body.length <= maxChars) return body
+  if (!query) return cap(body, maxChars)
+  const terms = queryToTerms(query)
+  if (terms.length === 0) return cap(body, maxChars)
+  return extractBestExcerpt(body, terms, maxChars)
+}
+
 export async function buildDocumentContext(
   vaultFs: FileSystemAdapter,
   path: string,
   settings: ChatSettings,
+  /** Current user query — used to extract the most relevant slice when the
+   *  document is too long to fit in the context window. */
+  query?: string,
 ): Promise<DocumentContext> {
   const title = titleFromPath(path)
   const maxChars = Math.max(1_000, settings.maxContextChars || 40_000)
@@ -93,7 +123,7 @@ export async function buildDocumentContext(
         (typeof doc.frontmatter.title === 'string' && doc.frontmatter.title) ||
         title
       const body = doc.content ?? ''
-      const capped = cap(body, maxChars)
+      const capped = smartCap(body, maxChars, query)
       return {
         path,
         title: fmTitle,
@@ -118,7 +148,7 @@ export async function buildDocumentContext(
     try {
       const bytes = await vaultFs.readFile(path)
       const raw = await extractPdfText(bytes, maxChars)
-      const capped = cap(raw, maxChars)
+      const capped = smartCap(raw, maxChars, query)
       return {
         path,
         title,
